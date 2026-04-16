@@ -21,21 +21,22 @@ Driver app for Color Fashion greige goods pickups. Mobile-first, static, Supabas
 
 ## Database
 
-Lives in the Color Fashion Supabase project (`mtxokbgpmkggolyfeehz`):
+Lives in the Color Fashion Supabase project (`cgsmzkafagnmsuzzkfnv`):
 
 - `greige_pickup_requests` — request list with status (`Pending` / `Picked Up` / `Cancelled`)
 - `greige_pickup_photos` — photo metadata, FK to request
-- `app_users` — role-based access (`admin`, `gt_team`, `us_team`, `viewer`, `driver`)
+- `app_users` — role-based access (`admin`, `user`, `driver`), flagged active via `is_active`
+- `ship_to_locations` — seeded customer addresses used for the new-pickup typeahead
 - Storage bucket `greige-pickup-photos` (private, 10 MB limit, images only)
 
 ## Adding a driver account
 
 1. Create the auth user in Supabase → Authentication → Users (email + password).
-2. Insert into `app_users` with `role = 'driver'` and `status = 'active'`. Example:
+2. Insert into `app_users` with `role = 'driver'` and `is_active = true`. Example:
 
    ```sql
-   INSERT INTO app_users (id, email, full_name, role, status)
-   VALUES ('<auth-user-uuid>', 'driver@example.com', 'Driver Name', 'driver', 'active');
+   INSERT INTO app_users (id, email, full_name, role, is_active)
+   VALUES ('<auth-user-uuid>', 'driver@example.com', 'Driver Name', 'driver', true);
    ```
 
 3. Share the login URL + credentials with the driver.
