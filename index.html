@@ -90,6 +90,7 @@
     display: none;
   }
   .error.show { display: block; }
+  .admin-panel .error { margin-top: 12px; }
   .admin-link {
     display: block;
     text-align: center;
@@ -163,7 +164,7 @@
     <div class="prompt">Who's driving today?</div>
     <div class="drivers" id="drivers"></div>
 
-    <div class="error" id="errorMsg"></div>
+    <div class="error" id="driverError"></div>
 
     <a href="#" class="admin-link" id="adminToggle">Admin / user sign-in →</a>
 
@@ -173,6 +174,7 @@
       <label for="password">Password</label>
       <input type="password" id="password" autocomplete="current-password" placeholder="••••••••">
       <button class="primary" id="adminSignIn">Sign in</button>
+      <div class="error" id="emailError"></div>
     </div>
 
     <div class="footer">v2.0 · colorfashiondnf.com</div>
@@ -185,19 +187,22 @@
   const { data: { session } } = await supabase.auth.getSession();
   if (session) window.location.replace('/app.html');
 
-  const errorMsg = document.getElementById('errorMsg');
+  const driverError = document.getElementById('driverError');
+  const emailError = document.getElementById('emailError');
   const driversEl = document.getElementById('drivers');
 
-  function showError(msg) {
-    errorMsg.textContent = msg;
-    errorMsg.classList.add('show');
+  function showError(slot, msg) {
+    slot.textContent = msg;
+    slot.classList.add('show');
   }
-  function clearError() {
-    errorMsg.classList.remove('show');
+  function clearError(slot) {
+    slot.classList.remove('show');
+    slot.textContent = '';
   }
 
-  async function handleSignIn(signInFn, labelRestore) {
-    clearError();
+  async function handleSignIn(signInFn, errorSlot, labelRestore) {
+    clearError(driverError);
+    clearError(emailError);
     document.querySelectorAll('.driver-btn, button.primary').forEach(b => b.disabled = true);
     try {
       const { data, error } = await signInFn();
@@ -210,7 +215,7 @@
       }
       window.location.replace('/app.html');
     } catch (err) {
-      showError(err.message || 'Sign in failed.');
+      showError(errorSlot, err.message || 'Sign in failed.');
       document.querySelectorAll('.driver-btn, button.primary').forEach(b => b.disabled = false);
       if (labelRestore) labelRestore();
     }
@@ -229,22 +234,29 @@
       const email = btn.dataset.email;
       const originalHtml = btn.innerHTML;
       btn.innerHTML = `<span class="driver-avatar"><span class="spinner"></span></span><span>Signing in…</span>`;
-      handleSignIn(() => signInAsDriver(email), () => { btn.innerHTML = originalHtml; });
+      handleSignIn(() => signInAsDriver(email), driverError, () => { btn.innerHTML = originalHtml; });
     });
   });
 
-  // Admin toggle
+  // Admin toggle — switching flows clears the other flow's error
   const adminPanel = document.getElementById('adminPanel');
   document.getElementById('adminToggle').addEventListener('click', (e) => {
     e.preventDefault();
     adminPanel.classList.toggle('show');
+    clearError(driverError);
+    clearError(emailError);
   });
 
+  const emailInput = document.getElementById('email');
+  const passwordInput = document.getElementById('password');
+  emailInput.addEventListener('input', () => clearError(emailError));
+  passwordInput.addEventListener('input', () => clearError(emailError));
+
   document.getElementById('adminSignIn').addEventListener('click', () => {
-    const email = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
-    if (!email || !password) return showError('Email and password required.');
-    handleSignIn(() => supabase.auth.signInWithPassword({ email, password }));
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    if (!email || !password) return showError(emailError, 'Email and password required.');
+    handleSignIn(() => supabase.auth.signInWithPassword({ email, password }), emailError);
   });
 </script>
 </body>
