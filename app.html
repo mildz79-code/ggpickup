@@ -347,9 +347,22 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   input[type="file"] { display: none; }
+
+  /* ---- Test-mode banner ---- */
+  .test-banner {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--warn);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+    padding: 6px 16px;
+    font-size: 12px;
+    text-align: center;
+    font-weight: 500;
+  }
 </style>
 </head>
 <body>
+  <!-- TODO: remove when shared test password is replaced with per-driver auth -->
+  <div class="test-banner">⚠️ TEST MODE — shared driver password. Replace before production.</div>
   <header>
     <div>
       <h1>🚚 GG Pickup</h1>
@@ -496,10 +509,18 @@
   // ---- Tabs ----
   document.querySelectorAll('.tab').forEach(t => {
     t.addEventListener('click', () => {
+      const prev = currentFilter;
+      const next = t.dataset.filter;
+      if (prev === next) return;
       document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
       t.classList.add('active');
-      currentFilter = t.dataset.filter;
-      renderList();
+      currentFilter = next;
+      // Today tab narrows the query server-side; other tabs share the "all" dataset
+      if (prev === 'today' || next === 'today') {
+        loadRequests();
+      } else {
+        renderList();
+      }
     });
   });
 
@@ -521,12 +542,13 @@
   // ---- Load requests ----
   async function loadRequests() {
     listContainer.innerHTML = '<div class="loading"><span class="spinner"></span>Loading…</div>';
-    const { data, error } = await supabase
-      .from('greige_pickup_requests')
-      .select('*')
+    let query = supabase.from('greige_pickup_requests').select('*');
+    if (currentFilter === 'today') query = query.eq('request_date', todayISO());
+    query = query
       .order('request_date', { ascending: false })
       .order('knitter', { ascending: true })
-      .order('id', { ascending: false });
+      .order('id', { ascending: true });
+    const { data, error } = await query;
 
     if (error) {
       listContainer.innerHTML = `<div class="empty"><span class="emoji">⚠️</span>${escapeHtml(error.message)}</div>`;
@@ -730,7 +752,11 @@
             lat: coords?.lat ?? null,
             lng: coords?.lng ?? null,
           });
-        if (dbErr) throw dbErr;
+        if (dbErr) {
+          // Best-effort: remove the uploaded file so we don't leave an orphan
+          await supabase.storage.from(PICKUP_PHOTOS_BUCKET).remove([path]).catch(() => {});
+          throw dbErr;
+        }
 
         placeholder.remove();
       } catch (err) {
@@ -781,7 +807,10 @@
 
   // ---- New pickup ----
   const newFab = document.getElementById('newPickupFab');
-  newFab.addEventListener('click', openNewPickup);
+  newFab.addEventListener('click', () => {
+    if (!canCreate) return;
+    openNewPickup();
+  });
 
   async function ensureShipTo() {
     if (shipToLocations) return shipToLocations;
@@ -855,6 +884,10 @@
   // Submit new pickup
   document.getElementById('newForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!canCreate) {
+      toast('Your role cannot create pickups.', 'error');
+      return;
+    }
     const createBtn = document.getElementById('createBtn');
     createBtn.disabled = true;
     createBtn.textContent = 'Creating…';

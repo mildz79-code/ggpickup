@@ -41,6 +41,23 @@ Lives in the Color Fashion Supabase project (`cgsmzkafagnmsuzzkfnv`):
 
 3. Share the login URL + credentials with the driver.
 
+## Testing-mode auth (current)
+
+The app currently runs in **shared-password test mode**. `supabase-client.js`
+exports a hard-coded `TEST_DRIVER_PASSWORD` and a `DRIVERS` list; the login
+page shows those drivers as tap-to-sign-in buttons. A yellow banner on every
+page flags this.
+
+Before production:
+
+1. Create per-driver passwords in Supabase Authentication.
+2. Remove `TEST_DRIVER_PASSWORD`, `DRIVERS`, and `signInAsDriver()` from
+   `supabase-client.js`.
+3. Replace the driver picker in `index.html` with a standard email/password
+   form (the admin panel already shows the pattern).
+4. Remove the `.test-banner` markup from `index.html` and `app.html`.
+5. Rotate the seeded admin password (`daniel@colorfashiondnf.com`).
+
 ## Deploying
 
 Netlify auto-deploys on push to `main`.
