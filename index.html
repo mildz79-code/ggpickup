@@ -150,9 +150,25 @@
     margin-top: 14px;
   }
   button.primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  /* ---- Test-mode banner ---- */
+  .test-banner {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+    padding: 6px 16px;
+    font-size: 12px;
+    text-align: center;
+    font-weight: 500;
+    z-index: 20;
+  }
 </style>
 </head>
 <body>
+  <!-- TODO: remove when shared test password is replaced with per-driver auth -->
+  <div class="test-banner">⚠️ TEST MODE — shared driver password. Replace before production.</div>
   <div class="card">
     <div class="logo">
       <span class="emoji">🚚</span>
