@@ -27,6 +27,18 @@ export const DRIVERS = [
   { email: 'driver3@colorfashiondnf.com', name: 'Driver 3' },
 ];
 
+// TODO: remove before production — dev auto-login
+export const AUTO_LOGIN_EMAIL = 'daniel@colorfashiondnf.com';
+export const AUTO_LOGIN_PASSWORD = 'CF2026admin';
+
+export async function signInAsAdmin() {
+  sessionStorage.removeItem('skipAutoLogin');
+  return supabase.auth.signInWithPassword({
+    email: AUTO_LOGIN_EMAIL,
+    password: AUTO_LOGIN_PASSWORD,
+  });
+}
+
 export async function signInAsDriver(email) {
   return supabase.auth.signInWithPassword({ email, password: TEST_DRIVER_PASSWORD });
 }
@@ -53,6 +65,7 @@ export async function requireSession() {
 }
 
 export async function signOut() {
+  sessionStorage.setItem('skipAutoLogin', '1');
   await supabase.auth.signOut();
   window.location.replace('/index.html');
 }

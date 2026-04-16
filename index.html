@@ -29,6 +29,14 @@
     padding: 20px;
     -webkit-tap-highlight-color: transparent;
   }
+  #loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 14px;
+  }
   .card {
     background: var(--card);
     border: 1px solid var(--border);
@@ -90,7 +98,6 @@
     display: none;
   }
   .error.show { display: block; }
-  .admin-panel .error { margin-top: 12px; }
   .admin-link {
     display: block;
     text-align: center;
@@ -114,43 +121,15 @@
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
+  .spinner-lg {
+    display: inline-block;
+    width: 32px; height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
   @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* Admin login panel */
-  .admin-panel { display: none; margin-top: 16px; }
-  .admin-panel.show { display: block; }
-  label {
-    display: block;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--muted);
-    margin-bottom: 6px;
-    margin-top: 10px;
-  }
-  input {
-    width: 100%;
-    padding: 12px 14px;
-    font-size: 16px;
-    background: #0f172a;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    color: var(--text);
-    outline: none;
-  }
-  input:focus { border-color: var(--accent); }
-  button.primary {
-    width: 100%;
-    padding: 12px;
-    font-size: 15px;
-    font-weight: 600;
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-    margin-top: 14px;
-  }
-  button.primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
   /* ---- Test-mode banner ---- */
   .test-banner {
@@ -169,8 +148,14 @@
 </head>
 <body>
   <!-- TODO: remove when shared test password is replaced with per-driver auth -->
-  <div class="test-banner">⚠️ TEST MODE — shared driver password. Replace before production.</div>
-  <div class="card">
+  <div class="test-banner">⚠️ TEST MODE — auto-login enabled. Passwordless. Replace before production.</div>
+
+  <div id="loading">
+    <span class="spinner-lg"></span>
+    <span>Signing in…</span>
+  </div>
+
+  <div class="card" id="picker" style="display:none">
     <div class="logo">
       <span class="emoji">🚚</span>
       <h1>GG Pickup</h1>
@@ -182,98 +167,104 @@
 
     <div class="error" id="driverError"></div>
 
-    <a href="#" class="admin-link" id="adminToggle">Admin / user sign-in →</a>
-
-    <div class="admin-panel" id="adminPanel">
-      <label for="email">Email</label>
-      <input type="email" id="email" autocomplete="email" inputmode="email" placeholder="you@colorfashiondnf.com">
-      <label for="password">Password</label>
-      <input type="password" id="password" autocomplete="current-password" placeholder="••••••••">
-      <button class="primary" id="adminSignIn">Sign in</button>
-      <div class="error" id="emailError"></div>
-    </div>
+    <a href="#" class="admin-link" id="adminSignInLink">Sign in as admin</a>
 
     <div class="footer">v2.0 · colorfashiondnf.com</div>
   </div>
 
 <script type="module">
-  import { supabase, DRIVERS, signInAsDriver, getCurrentAppUser } from './supabase-client.js';
+  import { supabase, DRIVERS, signInAsDriver, getCurrentAppUser, signInAsAdmin, AUTO_LOGIN_EMAIL, AUTO_LOGIN_PASSWORD } from './supabase-client.js';
 
-  // If already signed in, go straight to the app
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session) window.location.replace('/app.html');
+  async function bootAuth() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) return { status: 'signed-in' };
 
-  const driverError = document.getElementById('driverError');
-  const emailError = document.getElementById('emailError');
-  const driversEl = document.getElementById('drivers');
-
-  function showError(slot, msg) {
-    slot.textContent = msg;
-    slot.classList.add('show');
-  }
-  function clearError(slot) {
-    slot.classList.remove('show');
-    slot.textContent = '';
-  }
-
-  async function handleSignIn(signInFn, errorSlot, labelRestore) {
-    clearError(driverError);
-    clearError(emailError);
-    document.querySelectorAll('.driver-btn, button.primary').forEach(b => b.disabled = true);
-    try {
-      const { data, error } = await signInFn();
-      if (error) throw error;
-
-      const appUser = await getCurrentAppUser();
-      if (!appUser || !appUser.is_active) {
-        await supabase.auth.signOut();
-        throw new Error('Account not authorized. Contact your admin.');
-      }
-      window.location.replace('/app.html');
-    } catch (err) {
-      showError(errorSlot, err.message || 'Sign in failed.');
-      document.querySelectorAll('.driver-btn, button.primary').forEach(b => b.disabled = false);
-      if (labelRestore) labelRestore();
+    if (sessionStorage.getItem('skipAutoLogin') === '1') {
+      return { status: 'show-picker' };
     }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: AUTO_LOGIN_EMAIL,
+      password: AUTO_LOGIN_PASSWORD,
+    });
+    if (error) {
+      console.error('Auto-login failed:', error);
+      return { status: 'show-picker', error: error.message };
+    }
+    return { status: 'signed-in' };
   }
 
-  // Render driver buttons
-  driversEl.innerHTML = DRIVERS.map(d => `
-    <button class="driver-btn" data-email="${d.email}">
-      <span class="driver-avatar">🚛</span>
-      <span>${d.name}</span>
-    </button>
-  `).join('');
+  const result = await bootAuth();
+  if (result.status === 'signed-in') {
+    window.location.replace('/app.html');
+  } else {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('picker').style.display = '';
 
-  driversEl.querySelectorAll('.driver-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const email = btn.dataset.email;
-      const originalHtml = btn.innerHTML;
-      btn.innerHTML = `<span class="driver-avatar"><span class="spinner"></span></span><span>Signing in…</span>`;
-      handleSignIn(() => signInAsDriver(email), driverError, () => { btn.innerHTML = originalHtml; });
+    const driverError = document.getElementById('driverError');
+    const driversEl = document.getElementById('drivers');
+
+    function showError(msg) {
+      driverError.textContent = msg;
+      driverError.classList.add('show');
+    }
+    function clearError() {
+      driverError.classList.remove('show');
+      driverError.textContent = '';
+    }
+    function setLoading(on) {
+      document.querySelectorAll('.driver-btn').forEach(b => b.disabled = on);
+      const link = document.getElementById('adminSignInLink');
+      link.style.pointerEvents = on ? 'none' : '';
+      link.style.opacity = on ? '0.5' : '';
+    }
+
+    if (result.error) showError(`Auto-login failed: ${result.error}`);
+
+    async function handleSignIn(signInFn, labelRestore) {
+      clearError();
+      setLoading(true);
+      try {
+        const { error } = await signInFn();
+        if (error) throw error;
+        const appUser = await getCurrentAppUser();
+        if (!appUser || !appUser.is_active) {
+          await supabase.auth.signOut();
+          throw new Error('Account not authorized. Contact your admin.');
+        }
+        window.location.replace('/app.html');
+      } catch (err) {
+        showError(err.message || 'Sign in failed.');
+        setLoading(false);
+        if (labelRestore) labelRestore();
+      }
+    }
+
+    driversEl.innerHTML = DRIVERS.map(d => `
+      <button class="driver-btn" data-email="${d.email}">
+        <span class="driver-avatar">🚛</span>
+        <span>${d.name}</span>
+      </button>
+    `).join('');
+
+    driversEl.querySelectorAll('.driver-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const email = btn.dataset.email;
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = `<span class="driver-avatar"><span class="spinner"></span></span><span>Signing in…</span>`;
+        sessionStorage.removeItem('skipAutoLogin');
+        handleSignIn(() => signInAsDriver(email), () => { btn.innerHTML = originalHtml; });
+      });
     });
-  });
 
-  // Admin toggle — switching flows clears the other flow's error
-  const adminPanel = document.getElementById('adminPanel');
-  document.getElementById('adminToggle').addEventListener('click', (e) => {
-    e.preventDefault();
-    adminPanel.classList.toggle('show');
-    clearError(driverError);
-    clearError(emailError);
-  });
-
-  const emailInput = document.getElementById('email');
-  const passwordInput = document.getElementById('password');
-  emailInput.addEventListener('input', () => clearError(emailError));
-  passwordInput.addEventListener('input', () => clearError(emailError));
-
-  document.getElementById('adminSignIn').addEventListener('click', () => {
-    const email = emailInput.value.trim();
-    const password = passwordInput.value;
-    if (!email || !password) return showError(emailError, 'Email and password required.');
-    handleSignIn(() => supabase.auth.signInWithPassword({ email, password }), emailError);
-  });
+    document.getElementById('adminSignInLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      const link = e.currentTarget;
+      const originalText = link.textContent;
+      link.textContent = 'Signing in…';
+      handleSignIn(() => signInAsAdmin(), () => { link.textContent = originalText; });
+    });
+  }
 </script>
 </body>
 </html>
