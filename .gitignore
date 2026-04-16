@@ -1,0 +1,4 @@
+.env
+.env.*
+*-handoff.md
+.DS_Store
