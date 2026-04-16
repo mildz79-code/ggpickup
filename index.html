@@ -10,11 +10,11 @@
   :root {
     --bg: #0f172a;
     --card: #1e293b;
+    --card-hover: #293548;
     --border: #334155;
     --text: #f1f5f9;
     --muted: #94a3b8;
     --accent: #3b82f6;
-    --accent-hover: #2563eb;
     --error: #ef4444;
   }
   * { box-sizing: border-box; }
@@ -33,53 +33,52 @@
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 16px;
-    padding: 32px 24px;
+    padding: 28px 22px;
     width: 100%;
     max-width: 380px;
     box-shadow: 0 10px 40px rgba(0,0,0,0.3);
   }
-  .logo {
-    text-align: center;
-    margin-bottom: 24px;
-  }
+  .logo { text-align: center; margin-bottom: 24px; }
   .logo .emoji { font-size: 48px; display: block; margin-bottom: 8px; }
-  .logo h1 { margin: 0; font-size: 24px; font-weight: 700; }
-  .logo p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
-  label {
-    display: block;
-    font-size: 13px;
-    font-weight: 500;
+  .logo h1 { margin: 0; font-size: 22px; font-weight: 700; }
+  .logo p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+
+  .prompt {
+    text-align: center;
     color: var(--muted);
-    margin-bottom: 6px;
-    margin-top: 14px;
+    font-size: 13px;
+    margin: 4px 0 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
-  input {
+  .drivers { display: flex; flex-direction: column; gap: 10px; }
+  .driver-btn {
     width: 100%;
-    padding: 14px 16px;
-    font-size: 16px;
-    background: #0f172a;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    color: var(--text);
-    outline: none;
-    transition: border-color 0.15s;
-  }
-  input:focus { border-color: var(--accent); }
-  button {
-    width: 100%;
-    padding: 14px;
+    padding: 16px;
     font-size: 16px;
     font-weight: 600;
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 10px;
+    background: #0f172a;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 12px;
     cursor: pointer;
-    margin-top: 20px;
-    transition: background 0.15s;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: background 0.15s, border-color 0.15s;
   }
-  button:hover { background: var(--accent-hover); }
-  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .driver-btn:hover { background: var(--card-hover); border-color: var(--accent); }
+  .driver-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .driver-avatar {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
   .error {
     background: rgba(239, 68, 68, 0.1);
     border: 1px solid rgba(239, 68, 68, 0.3);
@@ -91,12 +90,66 @@
     display: none;
   }
   .error.show { display: block; }
-  .footer {
+  .admin-link {
+    display: block;
     text-align: center;
     margin-top: 20px;
+    color: var(--muted);
     font-size: 12px;
+    text-decoration: none;
+  }
+  .admin-link:hover { color: var(--text); }
+  .footer {
+    text-align: center;
+    margin-top: 14px;
+    font-size: 11px;
     color: var(--muted);
   }
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Admin login panel */
+  .admin-panel { display: none; margin-top: 16px; }
+  .admin-panel.show { display: block; }
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    margin-bottom: 6px;
+    margin-top: 10px;
+  }
+  input {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 16px;
+    background: #0f172a;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    outline: none;
+  }
+  input:focus { border-color: var(--accent); }
+  button.primary {
+    width: 100%;
+    padding: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-top: 14px;
+  }
+  button.primary:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -104,71 +157,94 @@
     <div class="logo">
       <span class="emoji">🚚</span>
       <h1>GG Pickup</h1>
-      <p>Greige Goods Pickup — Color Fashion</p>
+      <p>Greige Goods — Color Fashion</p>
     </div>
 
-    <form id="loginForm">
+    <div class="prompt">Who's driving today?</div>
+    <div class="drivers" id="drivers"></div>
+
+    <div class="error" id="errorMsg"></div>
+
+    <a href="#" class="admin-link" id="adminToggle">Admin / user sign-in →</a>
+
+    <div class="admin-panel" id="adminPanel">
       <label for="email">Email</label>
-      <input type="email" id="email" required autocomplete="email" inputmode="email" placeholder="driver@colorfashiondnf.com">
-
+      <input type="email" id="email" autocomplete="email" inputmode="email" placeholder="you@colorfashiondnf.com">
       <label for="password">Password</label>
-      <input type="password" id="password" required autocomplete="current-password" placeholder="••••••••">
+      <input type="password" id="password" autocomplete="current-password" placeholder="••••••••">
+      <button class="primary" id="adminSignIn">Sign in</button>
+    </div>
 
-      <div class="error" id="errorMsg"></div>
-
-      <button type="submit" id="submitBtn">Sign in</button>
-    </form>
-
-    <div class="footer">v1.0 · colorfashiondnf.com</div>
+    <div class="footer">v2.0 · colorfashiondnf.com</div>
   </div>
 
 <script type="module">
-  import { supabase } from './supabase-client.js';
+  import { supabase, DRIVERS, signInAsDriver, getCurrentAppUser } from './supabase-client.js';
 
-  // If already signed in, go to app
+  // If already signed in, go straight to the app
   const { data: { session } } = await supabase.auth.getSession();
   if (session) window.location.replace('/app.html');
 
-  const form = document.getElementById('loginForm');
   const errorMsg = document.getElementById('errorMsg');
-  const submitBtn = document.getElementById('submitBtn');
+  const driversEl = document.getElementById('drivers');
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorMsg.classList.add('show');
+  }
+  function clearError() {
     errorMsg.classList.remove('show');
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Signing in…';
+  }
 
+  async function handleSignIn(signInFn, labelRestore) {
+    clearError();
+    document.querySelectorAll('.driver-btn, button.primary').forEach(b => b.disabled = true);
+    try {
+      const { data, error } = await signInFn();
+      if (error) throw error;
+
+      const appUser = await getCurrentAppUser();
+      if (!appUser || !appUser.is_active) {
+        await supabase.auth.signOut();
+        throw new Error('Account not authorized. Contact your admin.');
+      }
+      window.location.replace('/app.html');
+    } catch (err) {
+      showError(err.message || 'Sign in failed.');
+      document.querySelectorAll('.driver-btn, button.primary').forEach(b => b.disabled = false);
+      if (labelRestore) labelRestore();
+    }
+  }
+
+  // Render driver buttons
+  driversEl.innerHTML = DRIVERS.map(d => `
+    <button class="driver-btn" data-email="${d.email}">
+      <span class="driver-avatar">🚛</span>
+      <span>${d.name}</span>
+    </button>
+  `).join('');
+
+  driversEl.querySelectorAll('.driver-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const email = btn.dataset.email;
+      const originalHtml = btn.innerHTML;
+      btn.innerHTML = `<span class="driver-avatar"><span class="spinner"></span></span><span>Signing in…</span>`;
+      handleSignIn(() => signInAsDriver(email), () => { btn.innerHTML = originalHtml; });
+    });
+  });
+
+  // Admin toggle
+  const adminPanel = document.getElementById('adminPanel');
+  document.getElementById('adminToggle').addEventListener('click', (e) => {
+    e.preventDefault();
+    adminPanel.classList.toggle('show');
+  });
+
+  document.getElementById('adminSignIn').addEventListener('click', () => {
     const email = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
-
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-
-    if (error) {
-      errorMsg.textContent = error.message;
-      errorMsg.classList.add('show');
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Sign in';
-      return;
-    }
-
-    // Check the user has an app_users row and is active
-    const { data: appUser, error: auErr } = await supabase
-      .from('app_users')
-      .select('role, status')
-      .eq('id', data.user.id)
-      .maybeSingle();
-
-    if (auErr || !appUser || appUser.status !== 'active') {
-      await supabase.auth.signOut();
-      errorMsg.textContent = 'Account not authorized. Contact your admin.';
-      errorMsg.classList.add('show');
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Sign in';
-      return;
-    }
-
-    window.location.replace('/app.html');
+    if (!email || !password) return showError('Email and password required.');
+    handleSignIn(() => supabase.auth.signInWithPassword({ email, password }));
   });
 </script>
 </body>
