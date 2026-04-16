@@ -1,10 +1,175 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>GG Pickup - Color Fashion</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0f172a">
+<title>GG Pickup — Color Fashion</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🚚%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --border: #334155;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --error: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px 24px;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+  }
+  .logo {
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .logo .emoji { font-size: 48px; display: block; margin-bottom: 8px; }
+  .logo h1 { margin: 0; font-size: 24px; font-weight: 700; }
+  .logo p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    margin-bottom: 6px;
+    margin-top: 14px;
+  }
+  input {
+    width: 100%;
+    padding: 14px 16px;
+    font-size: 16px;
+    background: #0f172a;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input:focus { border-color: var(--accent); }
+  button {
+    width: 100%;
+    padding: 14px;
+    font-size: 16px;
+    font-weight: 600;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-top: 20px;
+    transition: background 0.15s;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-top: 14px;
+    font-size: 14px;
+    display: none;
+  }
+  .error.show { display: block; }
+  .footer {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+</style>
 </head>
 <body>
-    <h1>GG Pickup</h1>
-    <p>Coming soon...</p>
+  <div class="card">
+    <div class="logo">
+      <span class="emoji">🚚</span>
+      <h1>GG Pickup</h1>
+      <p>Greige Goods Pickup — Color Fashion</p>
+    </div>
+
+    <form id="loginForm">
+      <label for="email">Email</label>
+      <input type="email" id="email" required autocomplete="email" inputmode="email" placeholder="driver@colorfashiondnf.com">
+
+      <label for="password">Password</label>
+      <input type="password" id="password" required autocomplete="current-password" placeholder="••••••••">
+
+      <div class="error" id="errorMsg"></div>
+
+      <button type="submit" id="submitBtn">Sign in</button>
+    </form>
+
+    <div class="footer">v1.0 · colorfashiondnf.com</div>
+  </div>
+
+<script type="module">
+  import { supabase } from './supabase-client.js';
+
+  // If already signed in, go to app
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) window.location.replace('/app.html');
+
+  const form = document.getElementById('loginForm');
+  const errorMsg = document.getElementById('errorMsg');
+  const submitBtn = document.getElementById('submitBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorMsg.classList.remove('show');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Signing in…';
+
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error) {
+      errorMsg.textContent = error.message;
+      errorMsg.classList.add('show');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Sign in';
+      return;
+    }
+
+    // Check the user has an app_users row and is active
+    const { data: appUser, error: auErr } = await supabase
+      .from('app_users')
+      .select('role, status')
+      .eq('id', data.user.id)
+      .maybeSingle();
+
+    if (auErr || !appUser || appUser.status !== 'active') {
+      await supabase.auth.signOut();
+      errorMsg.textContent = 'Account not authorized. Contact your admin.';
+      errorMsg.classList.add('show');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Sign in';
+      return;
+    }
+
+    window.location.replace('/app.html');
+  });
+</script>
 </body>
 </html>

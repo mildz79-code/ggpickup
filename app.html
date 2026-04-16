@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0f172a">
+<title>GG Pickup</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🚚%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --card-hover: #293548;
+    --border: #334155;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --success: #10b981;
+    --warn: #f59e0b;
+    --error: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-tap-highlight-color: transparent;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* ---- Header ---- */
+  header {
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    padding-top: calc(12px + env(safe-area-inset-top));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 10;
+  }
+  header h1 { margin: 0; font-size: 18px; font-weight: 700; }
+  header .user {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  header button.icon {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 20px;
+    padding: 8px;
+    cursor: pointer;
+  }
+
+  /* ---- Filter tabs ---- */
+  .tabs {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    padding: 8px 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .tab.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+
+  /* ---- List ---- */
+  main { padding: 12px 16px 80px; }
+  .request-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .request-card:active { background: var(--card-hover); }
+  .rc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+  .rc-knitter { font-weight: 600; font-size: 16px; }
+  .rc-customer { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .rc-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+  .rc-meta span { display: flex; align-items: center; gap: 4px; }
+
+  .status-badge {
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .status-Pending { background: rgba(245, 158, 11, 0.15); color: var(--warn); }
+  .status-PickedUp { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+  .status-Cancelled { background: rgba(239, 68, 68, 0.15); color: var(--error); }
+
+  .empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+  }
+  .empty .emoji { font-size: 48px; display: block; margin-bottom: 12px; opacity: 0.6; }
+
+  /* ---- Detail modal ---- */
+  .modal {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: none;
+    flex-direction: column;
+    z-index: 20;
+    overflow-y: auto;
+  }
+  .modal.show { display: flex; }
+  .modal-header {
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    padding-top: calc(12px + env(safe-area-inset-top));
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .modal-header button {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-size: 18px;
+    padding: 8px;
+    cursor: pointer;
+  }
+  .modal-header h2 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; }
+  .modal-body { padding: 16px; flex: 1; }
+
+  .detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .detail-row .label { color: var(--muted); }
+  .detail-row .value { font-weight: 500; text-align: right; max-width: 60%; word-break: break-word; }
+
+  .section-title {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    margin: 24px 0 10px;
+    font-weight: 600;
+  }
+
+  /* ---- Photos grid ---- */
+  .photos-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .photo-thumb {
+    aspect-ratio: 1;
+    background: var(--card);
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+  }
+  .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .photo-thumb.uploading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .photo-empty {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 8px 0;
+  }
+
+  /* ---- Action buttons ---- */
+  .actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  button.primary, button.secondary, button.success {
+    width: 100%;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 600;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  button.primary { background: var(--accent); color: white; }
+  button.secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+  button.success { background: var(--success); color: white; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ---- Toast ---- */
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-size: 14px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+  .toast.error { border-color: var(--error); color: #fca5a5; }
+  .toast.success { border-color: var(--success); color: #6ee7b7; }
+
+  /* ---- Loading ---- */
+  .loading {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--muted);
+  }
+  .spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  input[type="file"] { display: none; }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>🚚 GG Pickup</h1>
+      <div class="user" id="userLabel">—</div>
+    </div>
+    <button class="icon" id="refreshBtn" title="Refresh">↻</button>
+    <button class="icon" id="logoutBtn" title="Sign out">⎋</button>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-status="Pending">Pending</div>
+    <div class="tab" data-status="Picked Up">Picked Up</div>
+    <div class="tab" data-status="all">All</div>
+  </div>
+
+  <main id="listContainer">
+    <div class="loading"><span class="spinner"></span>Loading…</div>
+  </main>
+
+  <!-- Detail modal -->
+  <div class="modal" id="detailModal">
+    <div class="modal-header">
+      <button id="closeModal">← Back</button>
+      <h2 id="modalTitle">Pickup Details</h2>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+
+  <!-- Hidden file input for camera -->
+  <input type="file" id="cameraInput" accept="image/*" capture="environment" multiple>
+
+  <div class="toast" id="toast"></div>
+
+<script type="module">
+  import { supabase, requireSession, logout, BUCKET } from './supabase-client.js';
+
+  const session = await requireSession();
+  if (!session) throw new Error('no session');
+
+  // ---- App state ----
+  let currentUser = null;
+  let currentUserRole = null;
+  let currentFilter = 'Pending';
+  let currentRequest = null; // the one open in the modal
+  let requests = [];
+
+  // ---- Load user ----
+  const userRes = await supabase
+    .from('app_users')
+    .select('full_name, role, status, email')
+    .eq('id', session.user.id)
+    .maybeSingle();
+  if (userRes.data) {
+    currentUser = userRes.data;
+    currentUserRole = userRes.data.role;
+    document.getElementById('userLabel').textContent =
+      `${userRes.data.full_name || session.user.email} · ${userRes.data.role}`;
+  }
+
+  // ---- DOM refs ----
+  const listContainer = document.getElementById('listContainer');
+  const modal = document.getElementById('detailModal');
+  const modalBody = document.getElementById('modalBody');
+  const modalTitle = document.getElementById('modalTitle');
+  const toastEl = document.getElementById('toast');
+  const cameraInput = document.getElementById('cameraInput');
+
+  // ---- Toast helper ----
+  let toastTimer;
+  function toast(msg, type = '') {
+    toastEl.textContent = msg;
+    toastEl.className = `toast show ${type}`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
+  }
+
+  // ---- Tabs ----
+  document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      currentFilter = t.dataset.status;
+      renderList();
+    });
+  });
+
+  // ---- Header buttons ----
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    if (confirm('Sign out?')) logout();
+  });
+  document.getElementById('refreshBtn').addEventListener('click', loadRequests);
+
+  // ---- Modal ----
+  document.getElementById('closeModal').addEventListener('click', closeModal);
+  function closeModal() {
+    modal.classList.remove('show');
+    currentRequest = null;
+  }
+
+  // ---- Load requests ----
+  async function loadRequests() {
+    listContainer.innerHTML = '<div class="loading"><span class="spinner"></span>Loading…</div>';
+    const { data, error } = await supabase
+      .from('greige_pickup_requests')
+      .select('*')
+      .order('request_date', { ascending: false })
+      .order('id', { ascending: false });
+
+    if (error) {
+      listContainer.innerHTML = `<div class="empty"><span class="emoji">⚠️</span>${error.message}</div>`;
+      return;
+    }
+    requests = data || [];
+    renderList();
+  }
+
+  function renderList() {
+    const filtered = currentFilter === 'all'
+      ? requests
+      : requests.filter(r => r.status === currentFilter);
+
+    if (filtered.length === 0) {
+      const emoji = currentFilter === 'Pending' ? '✅' : '📦';
+      const msg = currentFilter === 'Pending' ? 'No pending pickups' : 'Nothing here';
+      listContainer.innerHTML = `<div class="empty"><span class="emoji">${emoji}</span>${msg}</div>`;
+      return;
+    }
+
+    listContainer.innerHTML = filtered.map(r => {
+      const statusClass = r.status === 'Picked Up' ? 'PickedUp' : r.status;
+      const date = r.request_date ? new Date(r.request_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+      return `
+        <div class="request-card" data-id="${r.id}">
+          <div class="rc-header">
+            <div>
+              <div class="rc-knitter">${escapeHtml(r.knitter)}</div>
+              <div class="rc-customer">→ ${escapeHtml(r.customer)}</div>
+            </div>
+            <span class="status-badge status-${statusClass}">${r.status}</span>
+          </div>
+          <div class="rc-meta">
+            ${r.lot_number ? `<span>🏷️ ${escapeHtml(r.lot_number)}</span>` : ''}
+            <span>📦 ${r.qty || 0} rolls</span>
+            <span>📅 ${date}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    listContainer.querySelectorAll('.request-card').forEach(card => {
+      card.addEventListener('click', () => openDetail(Number(card.dataset.id)));
+    });
+  }
+
+  // ---- Detail view ----
+  async function openDetail(id) {
+    currentRequest = requests.find(r => r.id === id);
+    if (!currentRequest) return;
+    modalTitle.textContent = `#${id} · ${currentRequest.knitter}`;
+    modal.classList.add('show');
+    await renderDetail();
+  }
+
+  async function renderDetail() {
+    const r = currentRequest;
+    if (!r) return;
+    const statusClass = r.status === 'Picked Up' ? 'PickedUp' : r.status;
+
+    modalBody.innerHTML = `
+      <div class="detail-row"><span class="label">Status</span><span class="value"><span class="status-badge status-${statusClass}">${r.status}</span></span></div>
+      <div class="detail-row"><span class="label">Request Date</span><span class="value">${r.request_date || '—'}</span></div>
+      <div class="detail-row"><span class="label">Knitter</span><span class="value">${escapeHtml(r.knitter)}</span></div>
+      <div class="detail-row"><span class="label">Customer</span><span class="value">${escapeHtml(r.customer)}</span></div>
+      <div class="detail-row"><span class="label">Lot #</span><span class="value">${escapeHtml(r.lot_number || '—')}</span></div>
+      <div class="detail-row"><span class="label">Qty</span><span class="value">${r.qty || 0} rolls</span></div>
+      ${r.notes ? `<div class="detail-row"><span class="label">Notes</span><span class="value">${escapeHtml(r.notes)}</span></div>` : ''}
+      ${r.picked_up_at ? `<div class="detail-row"><span class="label">Picked Up</span><span class="value">${new Date(r.picked_up_at).toLocaleString()}</span></div>` : ''}
+
+      <div class="section-title">Photos</div>
+      <div class="photos-grid" id="photosGrid"></div>
+
+      <div class="actions" id="actions"></div>
+    `;
+
+    await loadPhotos();
+    renderActions();
+  }
+
+  async function loadPhotos() {
+    const grid = document.getElementById('photosGrid');
+    if (!grid) return;
+    grid.innerHTML = '<div class="photo-empty">Loading photos…</div>';
+
+    const { data, error } = await supabase
+      .from('greige_pickup_photos')
+      .select('id, storage_path, uploaded_at')
+      .eq('request_id', currentRequest.id)
+      .order('uploaded_at', { ascending: false });
+
+    if (error) {
+      grid.innerHTML = `<div class="photo-empty">⚠️ ${error.message}</div>`;
+      return;
+    }
+    if (!data || data.length === 0) {
+      grid.innerHTML = '<div class="photo-empty">No photos yet.</div>';
+      return;
+    }
+
+    grid.innerHTML = '';
+    for (const p of data) {
+      const { data: signed } = await supabase.storage
+        .from(BUCKET)
+        .createSignedUrl(p.storage_path, 3600);
+      const div = document.createElement('div');
+      div.className = 'photo-thumb';
+      if (signed?.signedUrl) {
+        div.innerHTML = `<img src="${signed.signedUrl}" alt="pickup photo">`;
+      } else {
+        div.innerHTML = '<div style="padding:10px;font-size:11px;color:#94a3b8;">⚠️</div>';
+      }
+      grid.appendChild(div);
+    }
+  }
+
+  function renderActions() {
+    const actions = document.getElementById('actions');
+    if (!actions) return;
+    const r = currentRequest;
+    const canAct = r.status === 'Pending';
+
+    actions.innerHTML = `
+      ${canAct ? `<button class="primary" id="takePhotoBtn">📷 Take Photos</button>` : ''}
+      ${canAct ? `<button class="success" id="markPickedBtn">✓ Mark as Picked Up</button>` : ''}
+      ${!canAct ? `<button class="secondary" id="takePhotoBtn">📷 Add More Photos</button>` : ''}
+    `;
+
+    const takeBtn = document.getElementById('takePhotoBtn');
+    if (takeBtn) takeBtn.addEventListener('click', () => cameraInput.click());
+
+    const markBtn = document.getElementById('markPickedBtn');
+    if (markBtn) markBtn.addEventListener('click', markPickedUp);
+  }
+
+  // ---- Camera / upload ----
+  cameraInput.addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files || []);
+    cameraInput.value = ''; // reset so same file can be picked again
+    if (files.length === 0 || !currentRequest) return;
+
+    // Optional geolocation — fail silent
+    let coords = null;
+    try {
+      coords = await new Promise((res) => {
+        if (!navigator.geolocation) return res(null);
+        navigator.geolocation.getCurrentPosition(
+          (p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+          () => res(null),
+          { timeout: 4000, maximumAge: 60000 }
+        );
+      });
+    } catch {}
+
+    const grid = document.getElementById('photosGrid');
+    for (const file of files) {
+      const placeholder = document.createElement('div');
+      placeholder.className = 'photo-thumb uploading';
+      placeholder.innerHTML = '<span class="spinner"></span>';
+      if (grid) grid.insertBefore(placeholder, grid.firstChild);
+
+      try {
+        const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+        const path = `${currentRequest.id}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+
+        const { error: upErr } = await supabase.storage
+          .from(BUCKET)
+          .upload(path, file, { cacheControl: '3600', upsert: false, contentType: file.type });
+        if (upErr) throw upErr;
+
+        const { error: dbErr } = await supabase
+          .from('greige_pickup_photos')
+          .insert({
+            request_id: currentRequest.id,
+            storage_path: path,
+            uploaded_by: session.user.id,
+            taken_lat: coords?.lat ?? null,
+            taken_lng: coords?.lng ?? null,
+          });
+        if (dbErr) throw dbErr;
+
+        placeholder.remove();
+      } catch (err) {
+        placeholder.innerHTML = '<div style="font-size:11px;padding:6px;color:#fca5a5;">Failed</div>';
+        toast(`Upload failed: ${err.message}`, 'error');
+      }
+    }
+    await loadPhotos();
+    toast(`${files.length} photo${files.length > 1 ? 's' : ''} uploaded`, 'success');
+  });
+
+  // ---- Mark picked up ----
+  async function markPickedUp() {
+    if (!currentRequest) return;
+    if (!confirm(`Mark pickup #${currentRequest.id} as Picked Up?`)) return;
+
+    const btn = document.getElementById('markPickedBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+    // Try to capture location
+    let coords = null;
+    try {
+      coords = await new Promise((res) => {
+        if (!navigator.geolocation) return res(null);
+        navigator.geolocation.getCurrentPosition(
+          (p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+          () => res(null),
+          { timeout: 4000, maximumAge: 60000 }
+        );
+      });
+    } catch {}
+
+    const { data, error } = await supabase
+      .from('greige_pickup_requests')
+      .update({
+        status: 'Picked Up',
+        picked_up_at: new Date().toISOString(),
+        picked_up_by: session.user.id,
+        picked_up_lat: coords?.lat ?? null,
+        picked_up_lng: coords?.lng ?? null,
+      })
+      .eq('id', currentRequest.id)
+      .select()
+      .single();
+
+    if (error) {
+      toast(`Update failed: ${error.message}`, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '✓ Mark as Picked Up'; }
+      return;
+    }
+
+    // Update local state
+    currentRequest = data;
+    const idx = requests.findIndex(r => r.id === data.id);
+    if (idx !== -1) requests[idx] = data;
+    await renderDetail();
+    renderList();
+    toast('Marked as picked up ✓', 'success');
+  }
+
+  // ---- Utils ----
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+  }
+
+  // ---- Boot ----
+  await loadRequests();
+</script>
+</body>
+</html>
