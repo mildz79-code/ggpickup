@@ -491,6 +491,7 @@
     toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
   }
 
+  // Use LOCAL time, not UTC — avoids wrong date after 5 PM Pacific
   function todayISO() {
     const d = new Date();
     const y = d.getFullYear();
@@ -515,12 +516,8 @@
       document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
       t.classList.add('active');
       currentFilter = next;
-      // Today tab narrows the query server-side; other tabs share the "all" dataset
-      if (prev === 'today' || next === 'today') {
-        loadRequests();
-      } else {
-        renderList();
-      }
+      // All tabs work on the same today-only dataset — just re-render
+      renderList();
     });
   });
 
@@ -539,16 +536,17 @@
     newModal.classList.remove('show');
   });
 
-  // ---- Load requests ----
+  // ---- Load requests — ALWAYS today only ----
   async function loadRequests() {
     listContainer.innerHTML = '<div class="loading"><span class="spinner"></span>Loading…</div>';
-    let query = supabase.from('greige_pickup_requests').select('*');
-    if (currentFilter === 'today') query = query.eq('request_date', todayISO());
-    query = query
-      .order('request_date', { ascending: false })
+
+    // Always fetch only today's pickups regardless of active tab
+    const { data, error } = await supabase
+      .from('greige_pickup_requests')
+      .select('*')
+      .eq('request_date', todayISO())
       .order('knitter', { ascending: true })
       .order('id', { ascending: true });
-    const { data, error } = await query;
 
     if (error) {
       listContainer.innerHTML = `<div class="empty"><span class="emoji">⚠️</span>${escapeHtml(error.message)}</div>`;
@@ -559,9 +557,8 @@
   }
 
   function filterRequests() {
-    const today = todayISO();
-    if (currentFilter === 'today') return requests.filter(r => r.request_date === today);
-    if (currentFilter === 'all') return requests;
+    // All data is already today-only; tabs just filter by status
+    if (currentFilter === 'today' || currentFilter === 'all') return requests;
     return requests.filter(r => r.status === currentFilter);
   }
 
@@ -572,7 +569,7 @@
       const emoji = currentFilter === 'today' ? '✅' : '📦';
       const msg = currentFilter === 'today'
         ? 'No pickups scheduled for today'
-        : 'Nothing here';
+        : `No ${currentFilter.toLowerCase()} pickups today`;
       listContainer.innerHTML = `<div class="empty"><span class="emoji">${emoji}</span>${msg}</div>`;
       return;
     }
@@ -587,7 +584,8 @@
 
     const html = [];
     for (const [knitter, items] of groups) {
-      html.push(`<div class="group-title">${escapeHtml(knitter)} · ${items.length}</div>`);
+      const totalQty = items.reduce((s, r) => s + (r.qty || 0), 0);
+      html.push(`<div class="group-title">${escapeHtml(knitter)} · ${totalQty} lots</div>`);
       for (const r of items) {
         const statusClass = r.status === 'Picked Up' ? 'PickedUp' : r.status;
         const date = r.request_date
@@ -604,7 +602,7 @@
             </div>
             <div class="rc-meta">
               ${r.lot_number ? `<span>🏷️ ${escapeHtml(r.lot_number)}</span>` : ''}
-              <span>📦 ${r.qty || 0} rolls</span>
+              <span>📦 ${r.qty || 0} lots</span>
               <span>📅 ${date}</span>
             </div>
           </div>
@@ -638,7 +636,7 @@
       <div class="detail-row"><span class="label">Knitter</span><span class="value">${escapeHtml(r.knitter)}</span></div>
       <div class="detail-row"><span class="label">Customer</span><span class="value">${escapeHtml(r.customer || '—')}</span></div>
       <div class="detail-row"><span class="label">Lot #</span><span class="value">${escapeHtml(r.lot_number || '—')}</span></div>
-      <div class="detail-row"><span class="label">Qty</span><span class="value">${r.qty || 0} rolls</span></div>
+      <div class="detail-row"><span class="label">Qty</span><span class="value">${r.qty || 0} lots</span></div>
       ${r.notes ? `<div class="detail-row"><span class="label">Notes</span><span class="value">${escapeHtml(r.notes)}</span></div>` : ''}
       ${r.picked_up_at ? `<div class="detail-row"><span class="label">Picked Up</span><span class="value">${new Date(r.picked_up_at).toLocaleString()}</span></div>` : ''}
       ${r.lat != null && r.lng != null ? `<div class="detail-row"><span class="label">Location</span><span class="value">${Number(r.lat).toFixed(5)}, ${Number(r.lng).toFixed(5)}</span></div>` : ''}
