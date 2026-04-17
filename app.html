@@ -105,6 +105,49 @@
   }
   .filter-tab.active .count { background: #c7d2fe; color: #2563eb; }
 
+  /* ---- Week bar ---- */
+  .week-bar {
+    display: flex;
+    gap: 3px;
+    padding: 6px 16px;
+    background: #fafbfd;
+    border-bottom: 2px solid #e0e0e0;
+    overflow-x: auto;
+  }
+  .week-tab {
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    color: #777;
+    background: transparent;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .week-tab:hover { background: #eef0f5; }
+  .week-tab.active { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
+
+  /* ---- Day separator row ---- */
+  .day-header td {
+    background: #f0f2f8;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #444;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    border-bottom: 2px solid #d0d5e0;
+  }
+  .day-header .day-count {
+    font-weight: 500;
+    color: #888;
+    text-transform: none;
+    letter-spacing: 0;
+    margin-left: 8px;
+  }
+
   /* ---- Table ---- */
   .table-wrap { padding: 8px 16px 80px; }
   table {
@@ -362,6 +405,8 @@
     <div class="filter-tab" data-filter="all">All <span class="count" id="countAll">0</span></div>
   </div>
 
+  <div class="week-bar" id="weekBar" style="display:none"></div>
+
   <div class="table-wrap">
     <table>
       <thead>
@@ -515,7 +560,67 @@
   let requests = [];
   let currentFilter = 'today';
   let currentDateFilter = 'today';
+  let currentMode = 'daily'; // 'daily' or 'weekly'
+  let currentWeekStart = null;  // ISO string of Monday for selected week
   let expandedKnitters = new Set();
+
+  // ---- Week helpers ----
+  function getMonday(d) {
+    const dt = new Date(d);
+    const day = dt.getDay();
+    const diff = dt.getDate() - day + (day === 0 ? -6 : 1); // Monday
+    dt.setDate(diff);
+    return dt;
+  }
+
+  function buildWeeks() {
+    // Build week tabs: This Week, Last Week, 2 Weeks Ago, etc.
+    const weeks = [];
+    const today = new Date();
+    const thisMonday = getMonday(today);
+
+    for (let i = 0; i < 4; i++) {
+      const mon = new Date(thisMonday);
+      mon.setDate(mon.getDate() - (i * 7));
+      const sun = new Date(mon);
+      sun.setDate(sun.getDate() + 6);
+
+      // Cap the end date to today
+      const endDate = sun > today ? today : sun;
+
+      const label = i === 0 ? 'This Week'
+                  : i === 1 ? 'Last Week'
+                  : shortDate(toISO(mon)) + ' \u2013 ' + shortDate(toISO(endDate));
+
+      weeks.push({
+        label,
+        startISO: toISO(mon),
+        endISO: toISO(endDate),
+      });
+    }
+    return weeks;
+  }
+
+  function renderWeekBar() {
+    const bar = document.getElementById('weekBar');
+    const weeks = buildWeeks();
+    bar.innerHTML = weeks.map((w, i) =>
+      `<div class="week-tab ${currentWeekStart === w.startISO ? 'active' : ''}" data-start="${w.startISO}" data-end="${w.endISO}">${w.label}</div>`
+    ).join('');
+
+    bar.querySelectorAll('.week-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        bar.querySelectorAll('.week-tab').forEach(x => x.classList.remove('active'));
+        tab.classList.add('active');
+        currentWeekStart = tab.dataset.start;
+        expandedKnitters.clear();
+        const start = tab.dataset.start;
+        const end = tab.dataset.end;
+        document.getElementById('dateLabel').textContent = shortDate(start) + ' \u2013 ' + shortDate(end);
+        loadWeekRequests(start, end);
+      });
+    });
+  }
 
   // ---- Date labels ----
   document.getElementById('dateLabel').textContent = formatDate(todayISO());
@@ -529,25 +634,51 @@
       const f = t.dataset.filter;
       currentFilter = f;
 
-      // If it's a date tab, switch the loaded date and reload
+      // If it's a date tab, switch to daily mode
       if (t.dataset.dateTab === 'true') {
-        const newDateFilter = f; // 'today', 'yesterday', or 'dayBefore'
+        currentMode = 'daily';
+        currentWeekStart = null;
+        document.getElementById('weekBar').style.display = 'none';
+        document.getElementById('weekBar').querySelectorAll('.week-tab').forEach(x => x.classList.remove('active'));
+        const newDateFilter = f;
         if (newDateFilter !== currentDateFilter) {
           currentDateFilter = newDateFilter;
           expandedKnitters.clear();
-          // Update header date label
           document.getElementById('dateLabel').textContent = formatDate(DATE_MAP[currentDateFilter]);
           loadRequests();
           return;
         }
+        renderTable();
+        return;
       }
+
+      // If "Picked Up" is clicked, show week bar
+      if (f === 'Picked Up') {
+        currentMode = 'weekly';
+        document.getElementById('weekBar').style.display = 'flex';
+        renderWeekBar();
+        // Auto-select "This Week"
+        const weeks = buildWeeks();
+        if (weeks.length > 0) {
+          currentWeekStart = weeks[0].startISO;
+          document.getElementById('weekBar').querySelector('.week-tab').classList.add('active');
+          document.getElementById('dateLabel').textContent = weeks[0].label + ' (' + shortDate(weeks[0].startISO) + ' \u2013 ' + shortDate(weeks[0].endISO) + ')';
+          loadWeekRequests(weeks[0].startISO, weeks[0].endISO);
+        }
+        return;
+      }
+
+      // For Pending, All — hide week bar and use daily mode
+      currentMode = 'daily';
+      currentWeekStart = null;
+      document.getElementById('weekBar').style.display = 'none';
       renderTable();
     });
   });
 
-  // ---- Load data for selected date ----
+  // ---- Load data for a single date (daily mode) ----
   async function loadRequests() {
-    document.getElementById('tableBody').innerHTML = '<tr><td colspan="8"><div class="loading"><span class="spinner"></span>Loading…</div></td></tr>';
+    document.getElementById('tableBody').innerHTML = '<tr><td colspan="8"><div class="loading"><span class="spinner"></span>Loading\u2026</div></td></tr>';
     document.getElementById('tableFoot').style.display = 'none';
 
     const dateToLoad = DATE_MAP[currentDateFilter] || todayISO();
@@ -559,12 +690,36 @@
       .order('id', { ascending: true });
 
     if (error) {
-      document.getElementById('tableBody').innerHTML = '<tr><td colspan="8"><div class="empty"><span class="emoji">⚠️</span>' + esc(error.message) + '</div></td></tr>';
+      document.getElementById('tableBody').innerHTML = '<tr><td colspan="8"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(error.message) + '</div></td></tr>';
       return;
     }
     requests = data || [];
     updateCounts();
     renderTable();
+  }
+
+  // ---- Load data for a week range ----
+  async function loadWeekRequests(startISO, endISO) {
+    document.getElementById('tableBody').innerHTML = '<tr><td colspan="8"><div class="loading"><span class="spinner"></span>Loading\u2026</div></td></tr>';
+    document.getElementById('tableFoot').style.display = 'none';
+
+    const { data, error } = await supabase
+      .from('greige_pickup_requests')
+      .select('*')
+      .gte('request_date', startISO)
+      .lte('request_date', endISO)
+      .eq('status', 'Picked Up')
+      .order('request_date', { ascending: false })
+      .order('knitter', { ascending: true })
+      .order('id', { ascending: true });
+
+    if (error) {
+      document.getElementById('tableBody').innerHTML = '<tr><td colspan="8"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(error.message) + '</div></td></tr>';
+      return;
+    }
+    requests = data || [];
+    updateCounts();
+    renderWeeklyTable();
   }
 
   function filterRequests() {
@@ -577,7 +732,7 @@
     const pending = requests.filter(r => r.status === 'Pending').length;
     const done = requests.filter(r => r.status === 'Picked Up').length;
 
-    // Update the count badge for whichever date tab is active
+    // Reset all date counts, then set the active one
     document.getElementById('countToday').textContent = currentDateFilter === 'today' ? requests.length : '';
     document.getElementById('countYesterday').textContent = currentDateFilter === 'yesterday' ? requests.length : '';
     document.getElementById('countDayBefore').textContent = currentDateFilter === 'dayBefore' ? requests.length : '';
@@ -601,7 +756,7 @@
     const tfoot = document.getElementById('tableFoot');
 
     if (filtered.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8"><div class="empty"><span class="emoji">✅</span>No pickups to show</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8"><div class="empty"><span class="emoji">\u2705</span>No pickups to show</div></td></tr>';
       tfoot.style.display = 'none';
       return;
     }
@@ -609,7 +764,7 @@
     // Group by knitter
     const groups = new Map();
     for (const r of filtered) {
-      const key = r.knitter || '—';
+      const key = r.knitter || '\u2014';
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(r);
     }
@@ -621,7 +776,6 @@
       const isExpanded = expandedKnitters.has(knitter);
 
       if (isMulti) {
-        // Parent row — collapsed summary
         const allPending = items.every(r => r.status === 'Pending');
         const allDone = items.every(r => r.status === 'Picked Up');
         const statusHtml = allPending
@@ -632,17 +786,16 @@
         const lotsPreview = items.map(r => r.lot_number).filter(Boolean).join(', ');
 
         html += `<tr class="parent-row ${isExpanded ? 'expanded' : ''}" data-knitter="${esc(knitter)}">
-          <td><button class="expand-toggle ${isExpanded ? 'open' : ''}" data-knitter="${esc(knitter)}">▶</button></td>
+          <td><button class="expand-toggle ${isExpanded ? 'open' : ''}" data-knitter="${esc(knitter)}">\u25b6</button></td>
           <td style="color:#999">${items.length}</td>
           <td class="knitter-cell">${esc(knitter)}</td>
-          <td class="customer-cell">${esc(items.map(r=>r.customer).filter(Boolean).join(', ') || '—')}</td>
+          <td class="customer-cell">${esc(items.map(r=>r.customer).filter(Boolean).join(', ') || '\u2014')}</td>
           <td class="qty-cell">${totalQty}</td>
-          <td class="lot-cell">${esc(lotsPreview) || (isExpanded ? '' : '<span style="color:#bbb">—</span>')}</td>
+          <td class="lot-cell">${esc(lotsPreview) || (isExpanded ? '' : '<span style="color:#bbb">\u2014</span>')}</td>
           <td>${statusHtml}</td>
           <td></td>
         </tr>`;
 
-        // Sub-rows (shown when expanded)
         if (isExpanded) {
           for (const r of items) {
             const sc = r.status === 'Picked Up' ? 'PickedUp' : r.status;
@@ -650,39 +803,36 @@
               <td></td>
               <td style="color:#bbb;font-size:11px">${r.id}</td>
               <td></td>
-              <td class="customer-cell">${esc(r.customer || '—')}</td>
+              <td class="customer-cell">${esc(r.customer || '\u2014')}</td>
               <td class="qty-cell">${r.qty || 0}</td>
               <td class="lot-cell">${esc(r.lot_number || '')}</td>
               <td><span class="status status-${sc}">${esc(r.status)}</span></td>
-              <td class="row-action">${r.status === 'Pending' ? '<button class="pick-btn" data-id="'+r.id+'">✓ Pick</button>' : ''}</td>
+              <td class="row-action">${r.status === 'Pending' ? '<button class="pick-btn" data-id="'+r.id+'">\u2713 Pick</button>' : ''}</td>
             </tr>`;
           }
         }
       } else {
-        // Single row — no expand needed
         const r = items[0];
         const sc = r.status === 'Picked Up' ? 'PickedUp' : r.status;
         html += `<tr data-id="${r.id}">
           <td></td>
           <td style="color:#999">${r.id}</td>
           <td class="knitter-cell">${esc(r.knitter)}</td>
-          <td class="customer-cell">${esc(r.customer || '—')}</td>
+          <td class="customer-cell">${esc(r.customer || '\u2014')}</td>
           <td class="qty-cell">${r.qty || 0}</td>
           <td class="lot-cell">${esc(r.lot_number || '')}</td>
           <td><span class="status status-${sc}">${esc(r.status)}</span></td>
-          <td class="row-action">${r.status === 'Pending' ? '<button class="pick-btn" data-id="'+r.id+'">✓ Pick</button>' : ''}</td>
+          <td class="row-action">${r.status === 'Pending' ? '<button class="pick-btn" data-id="'+r.id+'">\u2713 Pick</button>' : ''}</td>
         </tr>`;
       }
     }
 
     tbody.innerHTML = html;
 
-    // Total
     const totalLots = filtered.reduce((s, r) => s + (r.qty || 0), 0);
     document.getElementById('totalQty').textContent = totalLots;
     tfoot.style.display = '';
 
-    // Event: expand/collapse
     tbody.querySelectorAll('.expand-toggle').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -693,7 +843,6 @@
       });
     });
 
-    // Event: row click → detail
     tbody.querySelectorAll('tr[data-id]').forEach(row => {
       row.addEventListener('click', (e) => {
         if (e.target.closest('.pick-btn')) return;
@@ -701,7 +850,6 @@
       });
     });
 
-    // Event: parent row click → expand
     tbody.querySelectorAll('.parent-row').forEach(row => {
       row.addEventListener('click', (e) => {
         if (e.target.closest('.expand-toggle')) return;
@@ -713,12 +861,127 @@
       row.style.cursor = 'pointer';
     });
 
-    // Event: quick pick buttons
     tbody.querySelectorAll('.pick-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         markPickedUp(Number(btn.dataset.id));
       });
+    });
+  }
+
+  // ---- Render weekly table (grouped by day) ----
+  function renderWeeklyTable() {
+    const tbody = document.getElementById('tableBody');
+    const tfoot = document.getElementById('tableFoot');
+
+    if (requests.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8"><div class="empty"><span class="emoji">\ud83d\udccb</span>No picked up items this week</div></td></tr>';
+      tfoot.style.display = 'none';
+      return;
+    }
+
+    // Group by date
+    const byDate = new Map();
+    for (const r of requests) {
+      const dt = r.request_date;
+      if (!byDate.has(dt)) byDate.set(dt, []);
+      byDate.get(dt).push(r);
+    }
+
+    let html = '';
+    for (const [date, items] of byDate) {
+      const dayTotal = items.reduce((s, r) => s + (r.qty || 0), 0);
+      html += `<tr class="day-header"><td colspan="8">${shortDate(date)}<span class="day-count"> \u2014 ${items.length} pickups, ${dayTotal} lots</span></td></tr>`;
+
+      // Group by knitter within this day
+      const groups = new Map();
+      for (const r of items) {
+        const key = r.knitter || '\u2014';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(r);
+      }
+
+      for (const [knitter, kItems] of groups) {
+        const totalQty = kItems.reduce((s, r) => s + (r.qty || 0), 0);
+        const isMulti = kItems.length > 1;
+        const dayKnitterKey = date + '::' + knitter;
+        const isExpanded = expandedKnitters.has(dayKnitterKey);
+
+        if (isMulti) {
+          const lotsPreview = kItems.map(r => r.lot_number).filter(Boolean).join(', ');
+          html += `<tr class="parent-row ${isExpanded ? 'expanded' : ''}" data-knitter="${esc(dayKnitterKey)}">
+            <td><button class="expand-toggle ${isExpanded ? 'open' : ''}" data-knitter="${esc(dayKnitterKey)}">\u25b6</button></td>
+            <td style="color:#999">${kItems.length}</td>
+            <td class="knitter-cell">${esc(knitter)}</td>
+            <td class="customer-cell">${esc(kItems.map(r=>r.customer).filter(Boolean).join(', ') || '\u2014')}</td>
+            <td class="qty-cell">${totalQty}</td>
+            <td class="lot-cell">${esc(lotsPreview) || '<span style="color:#bbb">\u2014</span>'}</td>
+            <td><span class="status status-PickedUp">Picked Up</span></td>
+            <td></td>
+          </tr>`;
+
+          if (isExpanded) {
+            for (const r of kItems) {
+              html += `<tr class="sub-row" data-id="${r.id}">
+                <td></td>
+                <td style="color:#bbb;font-size:11px">${r.id}</td>
+                <td></td>
+                <td class="customer-cell">${esc(r.customer || '\u2014')}</td>
+                <td class="qty-cell">${r.qty || 0}</td>
+                <td class="lot-cell">${esc(r.lot_number || '')}</td>
+                <td><span class="status status-PickedUp">Picked Up</span></td>
+                <td></td>
+              </tr>`;
+            }
+          }
+        } else {
+          const r = kItems[0];
+          html += `<tr data-id="${r.id}">
+            <td></td>
+            <td style="color:#999">${r.id}</td>
+            <td class="knitter-cell">${esc(r.knitter)}</td>
+            <td class="customer-cell">${esc(r.customer || '\u2014')}</td>
+            <td class="qty-cell">${r.qty || 0}</td>
+            <td class="lot-cell">${esc(r.lot_number || '')}</td>
+            <td><span class="status status-PickedUp">Picked Up</span></td>
+            <td></td>
+          </tr>`;
+        }
+      }
+    }
+
+    tbody.innerHTML = html;
+
+    const totalLots = requests.reduce((s, r) => s + (r.qty || 0), 0);
+    document.getElementById('totalQty').textContent = totalLots;
+    tfoot.style.display = '';
+
+    tbody.querySelectorAll('.expand-toggle').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const k = btn.dataset.knitter;
+        if (expandedKnitters.has(k)) expandedKnitters.delete(k);
+        else expandedKnitters.add(k);
+        renderWeeklyTable();
+      });
+    });
+
+    tbody.querySelectorAll('tr[data-id]').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.pick-btn')) return;
+        openDetail(Number(row.dataset.id));
+      });
+    });
+
+    tbody.querySelectorAll('.parent-row').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.expand-toggle')) return;
+        const k = row.dataset.knitter;
+        if (expandedKnitters.has(k)) expandedKnitters.delete(k);
+        else expandedKnitters.add(k);
+        renderWeeklyTable();
+      });
+      row.style.cursor = 'pointer';
     });
   }
 
@@ -728,20 +991,20 @@
     if (!r) return;
     const sc = r.status === 'Picked Up' ? 'PickedUp' : r.status;
 
-    document.getElementById('detailTitle').textContent = '#' + r.id + ' · ' + (r.knitter || '—');
+    document.getElementById('detailTitle').textContent = '#' + r.id + ' \u00b7 ' + (r.knitter || '\u2014');
     document.getElementById('detailBody').innerHTML = `
       <div class="detail-row"><span class="dl">Status</span><span class="dv"><span class="status status-${sc}">${esc(r.status)}</span></span></div>
       <div class="detail-row"><span class="dl">Knitter</span><span class="dv">${esc(r.knitter)}</span></div>
-      <div class="detail-row"><span class="dl">Customer</span><span class="dv">${esc(r.customer || '—')}</span></div>
+      <div class="detail-row"><span class="dl">Customer</span><span class="dv">${esc(r.customer || '\u2014')}</span></div>
       <div class="detail-row"><span class="dl">Qty</span><span class="dv">${r.qty || 0} lots</span></div>
-      <div class="detail-row"><span class="dl">Lot #</span><span class="dv">${esc(r.lot_number || '—')}</span></div>
-      <div class="detail-row"><span class="dl">Date</span><span class="dv">${esc(r.request_date || '—')}</span></div>
+      <div class="detail-row"><span class="dl">Lot #</span><span class="dv">${esc(r.lot_number || '\u2014')}</span></div>
+      <div class="detail-row"><span class="dl">Date</span><span class="dv">${esc(r.request_date || '\u2014')}</span></div>
       ${r.notes ? `<div class="detail-row"><span class="dl">Notes</span><span class="dv">${esc(r.notes)}</span></div>` : ''}
       ${r.picked_up_at ? `<div class="detail-row"><span class="dl">Picked Up</span><span class="dv">${new Date(r.picked_up_at).toLocaleString()}</span></div>` : ''}
       <div class="detail-actions">
-        ${r.status === 'Pending' ? `<button class="btn btn-success" onclick="window._markPicked(${r.id})">✓ Mark as Picked Up</button>` : ''}
+        ${r.status === 'Pending' ? `<button class="btn btn-success" onclick="window._markPicked(${r.id})">\u2713 Mark as Picked Up</button>` : ''}
         ${r.status === 'Pending' ? `<button class="btn btn-danger" onclick="window._cancelPickup(${r.id})">Cancel Pickup</button>` : ''}
-        ${r.status === 'Picked Up' ? `<button class="btn btn-outline-gray" onclick="window._undoPickup(${r.id})">↩ Undo (Back to Pending)</button>` : ''}
+        ${r.status === 'Picked Up' ? `<button class="btn btn-outline-gray" onclick="window._undoPickup(${r.id})">\u21a9 Undo (Back to Pending)</button>` : ''}
         <button class="btn btn-outline-gray" onclick="document.getElementById('detailOverlay').classList.remove('show')">Close</button>
       </div>
     `;
@@ -775,7 +1038,7 @@
       .eq('id', id);
 
     if (error) { toast('Error: ' + error.message, 'error'); return; }
-    toast('Marked as picked up ✓', 'success');
+    toast('Marked as picked up \u2713', 'success');
     document.getElementById('detailOverlay').classList.remove('show');
     await loadRequests();
   }
@@ -794,7 +1057,7 @@
       .eq('id', id);
 
     if (error) { toast('Error: ' + error.message, 'error'); return; }
-    toast('Status → ' + newStatus, 'success');
+    toast('Status \u2192 ' + newStatus, 'success');
     document.getElementById('detailOverlay').classList.remove('show');
     await loadRequests();
   }
@@ -824,7 +1087,7 @@
     const knitter = document.getElementById('f_knitter').value.trim().toUpperCase();
     if (!knitter) { toast('Knitter is required', 'error'); return; }
     const btn = document.getElementById('submitNewBtn');
-    btn.disabled = true; btn.textContent = 'Creating…';
+    btn.disabled = true; btn.textContent = 'Creating\u2026';
 
     const { data, error } = await supabase
       .from('greige_pickup_requests')
