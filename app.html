@@ -354,7 +354,9 @@
   <div class="summary" id="summaryBar"></div>
 
   <div class="filters" id="filterBar">
-    <div class="filter-tab active" data-filter="today">Today <span class="count" id="countToday">0</span></div>
+    <div class="filter-tab active" data-filter="today" data-date-tab="true">Today <span class="count" id="countToday">0</span></div>
+    <div class="filter-tab" data-filter="yesterday" data-date-tab="true">Yesterday <span class="count" id="countYesterday">0</span></div>
+    <div class="filter-tab" data-filter="dayBefore" data-date-tab="true"><span id="dayBeforeLabel"></span> <span class="count" id="countDayBefore">0</span></div>
     <div class="filter-tab" data-filter="Pending">Pending <span class="count" id="countPending">0</span></div>
     <div class="filter-tab" data-filter="Picked Up">Picked Up <span class="count" id="countDone">0</span></div>
     <div class="filter-tab" data-filter="all">All <span class="count" id="countAll">0</span></div>
@@ -463,10 +465,21 @@
   }
 
   // ---- Helpers ----
-  function todayISO() {
-    const d = new Date();
+  function toISO(d) {
     return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
+  function todayISO() { return toISO(new Date()); }
+  function daysAgoISO(n) {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return toISO(d);
+  }
+
+  const DATE_MAP = {
+    today: todayISO(),
+    yesterday: daysAgoISO(1),
+    dayBefore: daysAgoISO(2),
+  };
 
   function formatDate(iso) {
     if (!iso) return '';
@@ -474,6 +487,14 @@
     const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     return days[d.getDay()] + ', ' + months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+  }
+
+  function shortDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso + 'T00:00:00');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    return days[d.getDay()] + ' ' + months[d.getMonth()] + ' ' + d.getDate();
   }
 
   function esc(s) {
@@ -493,30 +514,47 @@
   // ---- State ----
   let requests = [];
   let currentFilter = 'today';
+  let currentDateFilter = 'today';
   let expandedKnitters = new Set();
 
-  // ---- Date label ----
+  // ---- Date labels ----
   document.getElementById('dateLabel').textContent = formatDate(todayISO());
+  document.getElementById('dayBeforeLabel').textContent = shortDate(DATE_MAP.dayBefore);
 
   // ---- Tabs ----
   document.querySelectorAll('.filter-tab').forEach(t => {
     t.addEventListener('click', () => {
       document.querySelectorAll('.filter-tab').forEach(x => x.classList.remove('active'));
       t.classList.add('active');
-      currentFilter = t.dataset.filter;
+      const f = t.dataset.filter;
+      currentFilter = f;
+
+      // If it's a date tab, switch the loaded date and reload
+      if (t.dataset.dateTab === 'true') {
+        const newDateFilter = f; // 'today', 'yesterday', or 'dayBefore'
+        if (newDateFilter !== currentDateFilter) {
+          currentDateFilter = newDateFilter;
+          expandedKnitters.clear();
+          // Update header date label
+          document.getElementById('dateLabel').textContent = formatDate(DATE_MAP[currentDateFilter]);
+          loadRequests();
+          return;
+        }
+      }
       renderTable();
     });
   });
 
-  // ---- Load data (today only) ----
+  // ---- Load data for selected date ----
   async function loadRequests() {
     document.getElementById('tableBody').innerHTML = '<tr><td colspan="8"><div class="loading"><span class="spinner"></span>Loading…</div></td></tr>';
     document.getElementById('tableFoot').style.display = 'none';
 
+    const dateToLoad = DATE_MAP[currentDateFilter] || todayISO();
     const { data, error } = await supabase
       .from('greige_pickup_requests')
       .select('*')
-      .eq('request_date', todayISO())
+      .eq('request_date', dateToLoad)
       .order('knitter', { ascending: true })
       .order('id', { ascending: true });
 
@@ -530,14 +568,20 @@
   }
 
   function filterRequests() {
-    if (currentFilter === 'today' || currentFilter === 'all') return requests;
+    // Date tabs (today/yesterday/dayBefore) and 'all' show everything loaded
+    if (currentFilter === 'today' || currentFilter === 'yesterday' || currentFilter === 'dayBefore' || currentFilter === 'all') return requests;
     return requests.filter(r => r.status === currentFilter);
   }
 
   function updateCounts() {
     const pending = requests.filter(r => r.status === 'Pending').length;
     const done = requests.filter(r => r.status === 'Picked Up').length;
-    document.getElementById('countToday').textContent = requests.length;
+
+    // Update the count badge for whichever date tab is active
+    document.getElementById('countToday').textContent = currentDateFilter === 'today' ? requests.length : '';
+    document.getElementById('countYesterday').textContent = currentDateFilter === 'yesterday' ? requests.length : '';
+    document.getElementById('countDayBefore').textContent = currentDateFilter === 'dayBefore' ? requests.length : '';
+
     document.getElementById('countPending').textContent = pending;
     document.getElementById('countDone').textContent = done;
     document.getElementById('countAll').textContent = requests.length;
