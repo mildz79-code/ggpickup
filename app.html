@@ -30,6 +30,27 @@
   }
   .topbar-left { display: flex; align-items: center; gap: 10px; }
   .topbar-left h1 { font-size: 15px; font-weight: 700; color: #1a1a2e; white-space: nowrap; }
+  .brand-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, #eff6ff, #eef2ff);
+    color: #1e3a8a;
+    border: 1px solid #c7d2fe;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+  }
+  .brand-chip .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  }
   .topbar-left .date-badge {
     background: #f0f0f5;
     padding: 3px 9px;
@@ -73,6 +94,31 @@
     font-size: 12px;
     color: #666;
     flex-wrap: wrap;
+  }
+  .list-hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 16px;
+    background: linear-gradient(90deg, #eff6ff 0%, #eef2ff 100%);
+    border-bottom: 1px solid #dbeafe;
+  }
+  .list-hero .title {
+    font-size: 12px;
+    color: #1e3a8a;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+  .list-hero .sub {
+    font-size: 11px;
+    color: #334155;
+    margin-top: 2px;
+  }
+  .logo-mini {
+    font-size: 20px;
+    filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.08));
   }
   .summary strong { color: #1a1a2e; font-size: 13px; }
 
@@ -385,13 +431,23 @@
   <div class="topbar">
     <div class="topbar-left">
       <h1>🚚 GG Pickup</h1>
+      <span class="brand-chip"><span class="dot"></span>Pickup List</span>
       <span class="date-badge" id="dateLabel"></span>
     </div>
     <div class="topbar-right">
       <button class="btn btn-primary" id="newBtn">+ New Pickup</button>
+      <button class="btn btn-secondary" id="syncBtn" style="display:none">Sync Doc</button>
       <button class="btn-icon" id="refreshBtn" title="Refresh">↻</button>
       <button class="btn-icon" id="logoutBtn" title="Sign out">⎋</button>
     </div>
+  </div>
+
+  <div class="list-hero">
+    <div>
+      <div class="title">Color Fashion · Greige Goods</div>
+      <div class="sub">Live dispatch view for pickup coordination</div>
+    </div>
+    <div class="logo-mini">🧵</div>
   </div>
 
   <div class="summary" id="summaryBar"></div>
@@ -412,7 +468,6 @@
       <thead>
         <tr>
           <th style="width:24px"></th>
-          <th style="width:36px">#</th>
           <th>Knitter</th>
           <th>Customer</th>
           <th style="width:44px;text-align:center">Qty</th>
@@ -422,11 +477,10 @@
         </tr>
       </thead>
       <tbody id="tableBody">
-        <tr><td colspan="8"><div class="loading"><span class="spinner"></span>Loading…</div></td></tr>
+        <tr><td colspan="7"><div class="loading"><span class="spinner"></span>Loading…</div></td></tr>
       </tbody>
       <tfoot id="tableFoot" style="display:none">
         <tr>
-          <td></td>
           <td></td>
           <td>TOTAL LOTS</td>
           <td></td>
@@ -510,21 +564,65 @@
   }
 
   // ---- Helpers ----
+  /** Calendar date in a specific IANA timezone (YYYY-MM-DD). */
+  function todayISOInTZ(timeZone) {
+    const tz = timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const parts = formatter.formatToParts(new Date());
+    const y = parts.find((p) => p.type === 'year')?.value;
+    const m = parts.find((p) => p.type === 'month')?.value;
+    const d = parts.find((p) => p.type === 'day')?.value;
+    if (!y || !m || !d) {
+      const now = new Date();
+      return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+    }
+    return `${y}-${m}-${d}`;
+  }
+
+  function addDaysISO(iso, deltaDays) {
+    const [yy, mm, dd] = iso.split('-').map(Number);
+    const utc = Date.UTC(yy, mm - 1, dd + deltaDays);
+    const t = new Date(utc);
+    return t.getUTCFullYear() + '-' + String(t.getUTCMonth() + 1).padStart(2, '0') + '-' + String(t.getUTCDate()).padStart(2, '0');
+  }
+
   function toISO(d) {
     return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
-  function todayISO() { return toISO(new Date()); }
-  function daysAgoISO(n) {
-    const d = new Date();
-    d.setDate(d.getDate() - n);
-    return toISO(d);
+
+  /** Matches server sync timezone when available (see Netlify `pickup-sync-config`). */
+  let PICKUP_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  let DATE_MAP = {
+    today: todayISOInTZ(PICKUP_TZ),
+    yesterday: addDaysISO(todayISOInTZ(PICKUP_TZ), -1),
+    dayBefore: addDaysISO(todayISOInTZ(PICKUP_TZ), -2),
+  };
+
+  function refreshDateMap() {
+    const t = todayISOInTZ(PICKUP_TZ);
+    DATE_MAP = {
+      today: t,
+      yesterday: addDaysISO(t, -1),
+      dayBefore: addDaysISO(t, -2),
+    };
   }
 
-  const DATE_MAP = {
-    today: todayISO(),
-    yesterday: daysAgoISO(1),
-    dayBefore: daysAgoISO(2),
-  };
+  async function loadPickupDateConfig() {
+    try {
+      const resp = await fetch('/.netlify/functions/pickup-sync-config');
+      if (!resp.ok) return;
+      const cfg = await resp.json();
+      if (cfg.timezone) PICKUP_TZ = cfg.timezone;
+      refreshDateMap();
+    } catch {
+      /* offline or function not deployed */
+    }
+  }
 
   function formatDate(iso) {
     if (!iso) return '';
@@ -563,6 +661,11 @@
   let currentMode = 'daily'; // 'daily' or 'weekly'
   let currentWeekStart = null;  // ISO string of Monday for selected week
   let expandedKnitters = new Set();
+  const syncBtnEl = document.getElementById('syncBtn');
+
+  if (appUser.role === 'admin') {
+    syncBtnEl.style.display = '';
+  }
 
   // ---- Week helpers ----
   function getMonday(d) {
@@ -622,9 +725,13 @@
     });
   }
 
-  // ---- Date labels ----
-  document.getElementById('dateLabel').textContent = formatDate(todayISO());
-  document.getElementById('dayBeforeLabel').textContent = shortDate(DATE_MAP.dayBefore);
+  // ---- Date labels (after server TZ config when deployed) ----
+  async function applyDateLabels() {
+    await loadPickupDateConfig();
+    refreshDateMap();
+    document.getElementById('dateLabel').textContent = formatDate(DATE_MAP.today);
+    document.getElementById('dayBeforeLabel').textContent = shortDate(DATE_MAP.dayBefore);
+  }
 
   // ---- Tabs ----
   document.querySelectorAll('.filter-tab').forEach(t => {
@@ -672,25 +779,36 @@
       currentMode = 'daily';
       currentWeekStart = null;
       document.getElementById('weekBar').style.display = 'none';
-      renderTable();
+      loadRequests();
     });
   });
 
   // ---- Load data for a single date (daily mode) ----
   async function loadRequests() {
-    document.getElementById('tableBody').innerHTML = '<tr><td colspan="8"><div class="loading"><span class="spinner"></span>Loading\u2026</div></td></tr>';
+    document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="loading"><span class="spinner"></span>Loading\u2026</div></td></tr>';
     document.getElementById('tableFoot').style.display = 'none';
 
-    const dateToLoad = DATE_MAP[currentDateFilter] || todayISO();
-    const { data, error } = await supabase
+    const dateToLoad = DATE_MAP[currentDateFilter] || DATE_MAP.today;
+    let query = supabase
       .from('greige_pickup_requests')
       .select('*')
       .eq('request_date', dateToLoad)
-      .order('knitter', { ascending: true })
-      .order('id', { ascending: true });
+      .order('knitter', { ascending: true });
+
+    if (currentFilter === 'Pending') {
+      query = query.eq('status', 'Pending');
+    } else if (currentFilter === 'all') {
+      // no status filter
+    } else if (currentFilter === 'today' || currentFilter === 'yesterday' || currentFilter === 'dayBefore') {
+      // no status filter for date tabs
+    } else if (currentFilter === 'Picked Up') {
+      query = query.eq('status', 'Picked Up');
+    }
+
+    const { data, error } = await query.order('id', { ascending: true });
 
     if (error) {
-      document.getElementById('tableBody').innerHTML = '<tr><td colspan="8"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(error.message) + '</div></td></tr>';
+      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(error.message) + '</div></td></tr>';
       return;
     }
     requests = data || [];
@@ -700,7 +818,7 @@
 
   // ---- Load data for a week range ----
   async function loadWeekRequests(startISO, endISO) {
-    document.getElementById('tableBody').innerHTML = '<tr><td colspan="8"><div class="loading"><span class="spinner"></span>Loading\u2026</div></td></tr>';
+    document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="loading"><span class="spinner"></span>Loading\u2026</div></td></tr>';
     document.getElementById('tableFoot').style.display = 'none';
 
     const { data, error } = await supabase
@@ -714,7 +832,7 @@
       .order('id', { ascending: true });
 
     if (error) {
-      document.getElementById('tableBody').innerHTML = '<tr><td colspan="8"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(error.message) + '</div></td></tr>';
+      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(error.message) + '</div></td></tr>';
       return;
     }
     requests = data || [];
@@ -723,9 +841,7 @@
   }
 
   function filterRequests() {
-    // Date tabs (today/yesterday/dayBefore) and 'all' show everything loaded
-    if (currentFilter === 'today' || currentFilter === 'yesterday' || currentFilter === 'dayBefore' || currentFilter === 'all') return requests;
-    return requests.filter(r => r.status === currentFilter);
+    return requests;
   }
 
   function updateCounts() {
@@ -756,7 +872,7 @@
     const tfoot = document.getElementById('tableFoot');
 
     if (filtered.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8"><div class="empty"><span class="emoji">\u2705</span>No pickups to show</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">\u2705</span>No pickups to show</div></td></tr>';
       tfoot.style.display = 'none';
       return;
     }
@@ -801,7 +917,7 @@
             const sc = r.status === 'Picked Up' ? 'PickedUp' : r.status;
             html += `<tr class="sub-row" data-id="${r.id}">
               <td></td>
-              <td style="color:#bbb;font-size:11px">${r.id}</td>
+              <td></td>
               <td></td>
               <td class="customer-cell">${esc(r.customer || '\u2014')}</td>
               <td class="qty-cell">${r.qty || 0}</td>
@@ -816,7 +932,6 @@
         const sc = r.status === 'Picked Up' ? 'PickedUp' : r.status;
         html += `<tr data-id="${r.id}">
           <td></td>
-          <td style="color:#999">${r.id}</td>
           <td class="knitter-cell">${esc(r.knitter)}</td>
           <td class="customer-cell">${esc(r.customer || '\u2014')}</td>
           <td class="qty-cell">${r.qty || 0}</td>
@@ -875,7 +990,7 @@
     const tfoot = document.getElementById('tableFoot');
 
     if (requests.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8"><div class="empty"><span class="emoji">\ud83d\udccb</span>No picked up items this week</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">\ud83d\udccb</span>No picked up items this week</div></td></tr>';
       tfoot.style.display = 'none';
       return;
     }
@@ -891,7 +1006,7 @@
     let html = '';
     for (const [date, items] of byDate) {
       const dayTotal = items.reduce((s, r) => s + (r.qty || 0), 0);
-      html += `<tr class="day-header"><td colspan="8">${shortDate(date)}<span class="day-count"> \u2014 ${items.length} pickups, ${dayTotal} lots</span></td></tr>`;
+      html += `<tr class="day-header"><td colspan="7">${shortDate(date)}<span class="day-count"> \u2014 ${items.length} pickups, ${dayTotal} lots</span></td></tr>`;
 
       // Group by knitter within this day
       const groups = new Map();
@@ -991,7 +1106,7 @@
     if (!r) return;
     const sc = r.status === 'Picked Up' ? 'PickedUp' : r.status;
 
-    document.getElementById('detailTitle').textContent = '#' + r.id + ' \u00b7 ' + (r.knitter || '\u2014');
+    document.getElementById('detailTitle').textContent = (r.knitter || '\u2014') + ' \u00b7 Pickup Details';
     document.getElementById('detailBody').innerHTML = `
       <div class="detail-row"><span class="dl">Status</span><span class="dv"><span class="status status-${sc}">${esc(r.status)}</span></span></div>
       <div class="detail-row"><span class="dl">Knitter</span><span class="dv">${esc(r.knitter)}</span></div>
@@ -1092,7 +1207,7 @@
     const { data, error } = await supabase
       .from('greige_pickup_requests')
       .insert({
-        request_date: todayISO(),
+        request_date: DATE_MAP.today,
         knitter: knitter,
         customer: document.getElementById('f_customer').value.trim().toUpperCase(),
         lot_number: document.getElementById('f_lot').value.trim() || null,
@@ -1111,6 +1226,39 @@
 
   // ---- Other events ----
   document.getElementById('refreshBtn').addEventListener('click', loadRequests);
+  syncBtnEl.addEventListener('click', async () => {
+    if (appUser.role !== 'admin') {
+      toast('Only admins can run sync', 'error');
+      return;
+    }
+    if (!confirm('Sync today\'s pickup list from Google Doc now? This replaces today\'s rows in Supabase.')) return;
+
+    const original = syncBtnEl.textContent;
+    syncBtnEl.disabled = true;
+    syncBtnEl.textContent = 'Syncing...';
+    try {
+      const resp = await fetch('/.netlify/functions/sync-pickups-from-doc', { method: 'POST' });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok || payload.error) {
+        throw new Error(payload.error || `Sync failed (${resp.status})`);
+      }
+      refreshDateMap();
+      document.getElementById('dayBeforeLabel').textContent = shortDate(DATE_MAP.dayBefore);
+      if (currentDateFilter === 'today') {
+        document.getElementById('dateLabel').textContent = formatDate(DATE_MAP.today);
+      }
+      let msg = `Synced ${payload.synced ?? 0} for ${payload.request_date || DATE_MAP.today}`;
+      if (payload.timezone) msg += ` (${payload.timezone})`;
+      if (payload.message) msg += '. ' + payload.message;
+      toast(msg, 'success');
+      await loadRequests();
+    } catch (err) {
+      toast(err?.message || 'Sync failed', 'error');
+    } finally {
+      syncBtnEl.disabled = false;
+      syncBtnEl.textContent = original;
+    }
+  });
   document.getElementById('logoutBtn').addEventListener('click', () => { if (confirm('Sign out?')) signOut(); });
   document.getElementById('closeDetail').addEventListener('click', () => {
     document.getElementById('detailOverlay').classList.remove('show');
@@ -1123,7 +1271,15 @@
   });
 
   // ---- Boot ----
+  await applyDateLabels();
   await loadRequests();
+
+  // Keep "today" fresh after scheduled doc sync (hourly) without manual refresh
+  setInterval(() => {
+    if (currentMode !== 'daily' || currentDateFilter !== 'today') return;
+    refreshDateMap();
+    loadRequests();
+  }, 90000);
 </script>
 </body>
 </html>

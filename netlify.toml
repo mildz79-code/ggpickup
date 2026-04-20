@@ -5,6 +5,10 @@
   publish = "."
   command = ""
 
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 # Security headers
 [[headers]]
   for = "/*"
