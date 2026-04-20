@@ -678,7 +678,7 @@
       currentMode = 'daily';
       currentWeekStart = null;
       document.getElementById('weekBar').style.display = 'none';
-      renderTable();
+      loadRequests();
     });
   });
 
@@ -688,12 +688,23 @@
     document.getElementById('tableFoot').style.display = 'none';
 
     const dateToLoad = DATE_MAP[currentDateFilter] || todayISO();
-    const { data, error } = await supabase
+    let query = supabase
       .from('greige_pickup_requests')
       .select('*')
       .eq('request_date', dateToLoad)
-      .order('knitter', { ascending: true })
-      .order('id', { ascending: true });
+      .order('knitter', { ascending: true });
+
+    if (currentFilter === 'Pending') {
+      query = query.eq('status', 'Pending');
+    } else if (currentFilter === 'all') {
+      // no status filter
+    } else if (currentFilter === 'today' || currentFilter === 'yesterday' || currentFilter === 'dayBefore') {
+      // no status filter for date tabs
+    } else if (currentFilter === 'Picked Up') {
+      query = query.eq('status', 'Picked Up');
+    }
+
+    const { data, error } = await query.order('id', { ascending: true });
 
     if (error) {
       document.getElementById('tableBody').innerHTML = '<tr><td colspan="8"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(error.message) + '</div></td></tr>';
@@ -729,9 +740,7 @@
   }
 
   function filterRequests() {
-    // Date tabs (today/yesterday/dayBefore) and 'all' show everything loaded
-    if (currentFilter === 'today' || currentFilter === 'yesterday' || currentFilter === 'dayBefore' || currentFilter === 'all') return requests;
-    return requests.filter(r => r.status === currentFilter);
+    return requests;
   }
 
   function updateCounts() {
