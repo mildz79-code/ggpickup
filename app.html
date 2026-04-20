@@ -389,6 +389,7 @@
     </div>
     <div class="topbar-right">
       <button class="btn btn-primary" id="newBtn">+ New Pickup</button>
+      <button class="btn btn-secondary" id="syncBtn" style="display:none">Sync Doc</button>
       <button class="btn-icon" id="refreshBtn" title="Refresh">↻</button>
       <button class="btn-icon" id="logoutBtn" title="Sign out">⎋</button>
     </div>
@@ -563,6 +564,11 @@
   let currentMode = 'daily'; // 'daily' or 'weekly'
   let currentWeekStart = null;  // ISO string of Monday for selected week
   let expandedKnitters = new Set();
+  const syncBtnEl = document.getElementById('syncBtn');
+
+  if (appUser.role === 'admin') {
+    syncBtnEl.style.display = '';
+  }
 
   // ---- Week helpers ----
   function getMonday(d) {
@@ -1111,6 +1117,31 @@
 
   // ---- Other events ----
   document.getElementById('refreshBtn').addEventListener('click', loadRequests);
+  syncBtnEl.addEventListener('click', async () => {
+    if (appUser.role !== 'admin') {
+      toast('Only admins can run sync', 'error');
+      return;
+    }
+    if (!confirm('Sync today\'s pickup list from Google Doc now? This replaces today\'s rows in Supabase.')) return;
+
+    const original = syncBtnEl.textContent;
+    syncBtnEl.disabled = true;
+    syncBtnEl.textContent = 'Syncing...';
+    try {
+      const resp = await fetch('/.netlify/functions/sync-pickups-from-doc', { method: 'POST' });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok || payload.error) {
+        throw new Error(payload.error || `Sync failed (${resp.status})`);
+      }
+      toast(`Synced ${payload.synced ?? 0} rows for ${payload.request_date || 'today'}`, 'success');
+      await loadRequests();
+    } catch (err) {
+      toast(err?.message || 'Sync failed', 'error');
+    } finally {
+      syncBtnEl.disabled = false;
+      syncBtnEl.textContent = original;
+    }
+  });
   document.getElementById('logoutBtn').addEventListener('click', () => { if (confirm('Sign out?')) signOut(); });
   document.getElementById('closeDetail').addEventListener('click', () => {
     document.getElementById('detailOverlay').classList.remove('show');
