@@ -80,12 +80,16 @@ Then open http://localhost:8000.
 
 ## Google Docs -> Today's pickup sync
 
-This repo now includes a Netlify Function at:
+This repo now includes Netlify Functions:
 
-- `/.netlify/functions/sync-pickups-from-doc`
+- `POST /.netlify/functions/sync-pickups-from-doc` — manual sync (admin **Sync Doc** button)
+- `GET /.netlify/functions/pickup-sync-config` — returns `{ timezone, todayISO }` so the app uses the same calendar day as the server
+- `pickup-sync-hourly` — scheduled sync (hourly) so Supabase stays aligned with the Google Doc after deploy
 
-The function reads tables from a configured Google Doc and replaces **today's**
-rows in `greige_pickup_requests` with today's rows from the doc.
+The sync reads tables from a configured Google Doc and replaces **today's**
+rows in `greige_pickup_requests` with today's rows from the doc. **Today** uses
+the timezone `PICKUP_DATE_TIMEZONE` (default `America/New_York`) so Netlify
+(UTC) and your doc dates stay aligned.
 
 ### Expected Google Doc table headers
 
@@ -111,6 +115,10 @@ Rows with invalid/missing date or knitter are skipped.
 - `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (paste full key; escaped `\n` is handled)
 - `SUPABASE_URL` (e.g. `https://<project>.supabase.co`)
 - `SUPABASE_SERVICE_ROLE_KEY` (server key; never expose in client code)
+
+Optional:
+
+- `PICKUP_DATE_TIMEZONE` — IANA zone for “today” (default `America/New_York`). Set to match where your doc dates are authored (e.g. `America/Los_Angeles`).
 
 Also share the Google Doc with the service account email (Viewer).
 

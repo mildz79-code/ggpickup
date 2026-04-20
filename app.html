@@ -564,21 +564,65 @@
   }
 
   // ---- Helpers ----
+  /** Calendar date in a specific IANA timezone (YYYY-MM-DD). */
+  function todayISOInTZ(timeZone) {
+    const tz = timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const parts = formatter.formatToParts(new Date());
+    const y = parts.find((p) => p.type === 'year')?.value;
+    const m = parts.find((p) => p.type === 'month')?.value;
+    const d = parts.find((p) => p.type === 'day')?.value;
+    if (!y || !m || !d) {
+      const now = new Date();
+      return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+    }
+    return `${y}-${m}-${d}`;
+  }
+
+  function addDaysISO(iso, deltaDays) {
+    const [yy, mm, dd] = iso.split('-').map(Number);
+    const utc = Date.UTC(yy, mm - 1, dd + deltaDays);
+    const t = new Date(utc);
+    return t.getUTCFullYear() + '-' + String(t.getUTCMonth() + 1).padStart(2, '0') + '-' + String(t.getUTCDate()).padStart(2, '0');
+  }
+
   function toISO(d) {
     return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
-  function todayISO() { return toISO(new Date()); }
-  function daysAgoISO(n) {
-    const d = new Date();
-    d.setDate(d.getDate() - n);
-    return toISO(d);
+
+  /** Matches server sync timezone when available (see Netlify `pickup-sync-config`). */
+  let PICKUP_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  let DATE_MAP = {
+    today: todayISOInTZ(PICKUP_TZ),
+    yesterday: addDaysISO(todayISOInTZ(PICKUP_TZ), -1),
+    dayBefore: addDaysISO(todayISOInTZ(PICKUP_TZ), -2),
+  };
+
+  function refreshDateMap() {
+    const t = todayISOInTZ(PICKUP_TZ);
+    DATE_MAP = {
+      today: t,
+      yesterday: addDaysISO(t, -1),
+      dayBefore: addDaysISO(t, -2),
+    };
   }
 
-  const DATE_MAP = {
-    today: todayISO(),
-    yesterday: daysAgoISO(1),
-    dayBefore: daysAgoISO(2),
-  };
+  async function loadPickupDateConfig() {
+    try {
+      const resp = await fetch('/.netlify/functions/pickup-sync-config');
+      if (!resp.ok) return;
+      const cfg = await resp.json();
+      if (cfg.timezone) PICKUP_TZ = cfg.timezone;
+      refreshDateMap();
+    } catch {
+      /* offline or function not deployed */
+    }
+  }
 
   function formatDate(iso) {
     if (!iso) return '';
@@ -681,9 +725,13 @@
     });
   }
 
-  // ---- Date labels ----
-  document.getElementById('dateLabel').textContent = formatDate(todayISO());
-  document.getElementById('dayBeforeLabel').textContent = shortDate(DATE_MAP.dayBefore);
+  // ---- Date labels (after server TZ config when deployed) ----
+  async function applyDateLabels() {
+    await loadPickupDateConfig();
+    refreshDateMap();
+    document.getElementById('dateLabel').textContent = formatDate(DATE_MAP.today);
+    document.getElementById('dayBeforeLabel').textContent = shortDate(DATE_MAP.dayBefore);
+  }
 
   // ---- Tabs ----
   document.querySelectorAll('.filter-tab').forEach(t => {
@@ -740,7 +788,7 @@
     document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="loading"><span class="spinner"></span>Loading\u2026</div></td></tr>';
     document.getElementById('tableFoot').style.display = 'none';
 
-    const dateToLoad = DATE_MAP[currentDateFilter] || todayISO();
+    const dateToLoad = DATE_MAP[currentDateFilter] || DATE_MAP.today;
     let query = supabase
       .from('greige_pickup_requests')
       .select('*')
@@ -1159,7 +1207,7 @@
     const { data, error } = await supabase
       .from('greige_pickup_requests')
       .insert({
-        request_date: todayISO(),
+        request_date: DATE_MAP.today,
         knitter: knitter,
         customer: document.getElementById('f_customer').value.trim().toUpperCase(),
         lot_number: document.getElementById('f_lot').value.trim() || null,
@@ -1194,7 +1242,15 @@
       if (!resp.ok || payload.error) {
         throw new Error(payload.error || `Sync failed (${resp.status})`);
       }
-      toast(`Synced ${payload.synced ?? 0} rows for ${payload.request_date || 'today'}`, 'success');
+      refreshDateMap();
+      document.getElementById('dayBeforeLabel').textContent = shortDate(DATE_MAP.dayBefore);
+      if (currentDateFilter === 'today') {
+        document.getElementById('dateLabel').textContent = formatDate(DATE_MAP.today);
+      }
+      let msg = `Synced ${payload.synced ?? 0} for ${payload.request_date || DATE_MAP.today}`;
+      if (payload.timezone) msg += ` (${payload.timezone})`;
+      if (payload.message) msg += '. ' + payload.message;
+      toast(msg, 'success');
       await loadRequests();
     } catch (err) {
       toast(err?.message || 'Sync failed', 'error');
@@ -1215,7 +1271,15 @@
   });
 
   // ---- Boot ----
+  await applyDateLabels();
   await loadRequests();
+
+  // Keep "today" fresh after scheduled doc sync (hourly) without manual refresh
+  setInterval(() => {
+    if (currentMode !== 'daily' || currentDateFilter !== 'today') return;
+    refreshDateMap();
+    loadRequests();
+  }, 90000);
 </script>
 </body>
 </html>
