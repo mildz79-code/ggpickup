@@ -127,7 +127,7 @@ Also share the Google Doc with the service account email (Viewer).
 Admins can click the **Sync Doc** button in `app.html` to run sync on demand.
 The button is hidden for non-admin users.
 
-## Notes
+## Notess
 
 - Uses Supabase publishable (anon) key — safe to ship in the client. Server-side is protected by RLS.
 - The camera uses `<input type="file" capture="environment">`, which opens the rear camera on phones and falls back to file picker on desktop.
