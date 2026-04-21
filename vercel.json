@@ -3,12 +3,6 @@
   "outputDirectory": ".",
   "framework": null,
   "installCommand": "npm install",
-  "crons": [
-    {
-      "path": "/api/pickup-sync-hourly",
-      "schedule": "0 * * * *"
-    }
-  ],
   "headers": [
     {
       "source": "/(.*)",
