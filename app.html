@@ -547,18 +547,80 @@
 
 <script type="module">
   import {
-    supabase,
-    requireSession,
-    signOut,
-    getCurrentAppUser,
-  } from './supabase-client.js';
+    api,
+    getToken,
+    getUser,
+    setSession,
+    clearSession,
+  } from './api.js';
 
-  const session = await requireSession();
-  if (!session) throw new Error('no session');
+  window.addEventListener('gg:unauthorized', () => {
+    sessionStorage.setItem('skipAutoLogin', '1');
+    location.replace('/index.html');
+  });
 
-  const appUser = await getCurrentAppUser();
+  function extractUser(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+    if (payload.user && typeof payload.user === 'object') return payload.user;
+    if (payload.data && payload.data.user && typeof payload.data.user === 'object') return payload.data.user;
+    if ('email' in payload || 'role' in payload || 'is_active' in payload) return payload;
+    return null;
+  }
+
+  function normalizeStatus(status) {
+    const raw = String(status || '').trim().toLowerCase();
+    if (raw === 'pickedup' || raw === 'picked up') return 'Picked Up';
+    if (raw === 'cancelled' || raw === 'canceled') return 'Cancelled';
+    if (raw === 'pending') return 'Pending';
+    return status || 'Pending';
+  }
+
+  function normalizeRequestShape(item) {
+    if (!item || typeof item !== 'object') return item;
+    return { ...item, status: normalizeStatus(item.status) };
+  }
+
+  function extractRequests(payload) {
+    if (Array.isArray(payload)) return payload.map(normalizeRequestShape);
+    if (payload && Array.isArray(payload.items)) return payload.items.map(normalizeRequestShape);
+    if (payload && Array.isArray(payload.data)) return payload.data.map(normalizeRequestShape);
+    if (payload && Array.isArray(payload.results)) return payload.results.map(normalizeRequestShape);
+    return [];
+  }
+
+  function extractRequest(payload) {
+    if (payload && typeof payload === 'object' && payload.id != null) return normalizeRequestShape(payload);
+    if (payload && payload.data && typeof payload.data === 'object' && payload.data.id != null) {
+      return normalizeRequestShape(payload.data);
+    }
+    if (payload && payload.item && typeof payload.item === 'object' && payload.item.id != null) {
+      return normalizeRequestShape(payload.item);
+    }
+    return null;
+  }
+
+  const token = getToken();
+  if (!token) {
+    window.location.replace('/index.html');
+    throw new Error('no session');
+  }
+
+  let appUser = getUser();
+  if (!appUser || appUser.is_active == null) {
+    try {
+      appUser = extractUser(await api.me());
+      if (appUser) setSession(token, appUser);
+    } catch (err) {
+      clearSession();
+      sessionStorage.setItem('skipAutoLogin', '1');
+      window.location.replace('/index.html');
+      throw err;
+    }
+  }
+
   if (!appUser || !appUser.is_active) {
-    await supabase.auth.signOut();
+    clearSession();
+    sessionStorage.setItem('skipAutoLogin', '1');
     window.location.replace('/index.html');
     throw new Error('not authorized');
   }
@@ -785,59 +847,65 @@
 
   // ---- Load data for a single date (daily mode) ----
   async function loadRequests() {
-    document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="loading"><span class="spinner"></span>Loading\u2026</div></td></tr>';
+    document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="loading"><span class="spinner"></span>Loading…</div></td></tr>';
     document.getElementById('tableFoot').style.display = 'none';
 
-    const dateToLoad = DATE_MAP[currentDateFilter] || DATE_MAP.today;
-    let query = supabase
-      .from('greige_pickup_requests')
-      .select('*')
-      .eq('request_date', dateToLoad)
-      .order('knitter', { ascending: true });
+    try {
+      const dateToLoad = DATE_MAP[currentDateFilter] || DATE_MAP.today;
+      const payload = await api.listRequests({ request_date: dateToLoad });
+      let rows = extractRequests(payload).filter(r => r.request_date === dateToLoad);
 
-    if (currentFilter === 'Pending') {
-      query = query.eq('status', 'Pending');
-    } else if (currentFilter === 'all') {
-      // no status filter
-    } else if (currentFilter === 'today' || currentFilter === 'yesterday' || currentFilter === 'dayBefore') {
-      // no status filter for date tabs
-    } else if (currentFilter === 'Picked Up') {
-      query = query.eq('status', 'Picked Up');
+      if (currentFilter === 'Pending') {
+        rows = rows.filter(r => normalizeStatus(r.status) === 'Pending');
+      } else if (currentFilter === 'Picked Up') {
+        rows = rows.filter(r => normalizeStatus(r.status) === 'Picked Up');
+      }
+
+      rows.sort((a, b) => {
+        const ka = String(a.knitter || '').toUpperCase();
+        const kb = String(b.knitter || '').toUpperCase();
+        if (ka < kb) return -1;
+        if (ka > kb) return 1;
+        return Number(a.id || 0) - Number(b.id || 0);
+      });
+
+      requests = rows;
+      updateCounts();
+      renderTable();
+    } catch (error) {
+      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">⚠️</span>' + esc(error.message) + '</div></td></tr>';
     }
-
-    const { data, error } = await query.order('id', { ascending: true });
-
-    if (error) {
-      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(error.message) + '</div></td></tr>';
-      return;
-    }
-    requests = data || [];
-    updateCounts();
-    renderTable();
   }
 
   // ---- Load data for a week range ----
   async function loadWeekRequests(startISO, endISO) {
-    document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="loading"><span class="spinner"></span>Loading\u2026</div></td></tr>';
+    document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="loading"><span class="spinner"></span>Loading…</div></td></tr>';
     document.getElementById('tableFoot').style.display = 'none';
 
-    const { data, error } = await supabase
-      .from('greige_pickup_requests')
-      .select('*')
-      .gte('request_date', startISO)
-      .lte('request_date', endISO)
-      .eq('status', 'Picked Up')
-      .order('request_date', { ascending: false })
-      .order('knitter', { ascending: true })
-      .order('id', { ascending: true });
+    try {
+      const payload = await api.listRequests({ start_date: startISO, end_date: endISO, status: 'Picked Up' });
+      let rows = extractRequests(payload).filter((r) => {
+        const d = r.request_date;
+        if (!d) return false;
+        return d >= startISO && d <= endISO && normalizeStatus(r.status) === 'Picked Up';
+      });
 
-    if (error) {
-      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(error.message) + '</div></td></tr>';
-      return;
+      rows.sort((a, b) => {
+        if (a.request_date > b.request_date) return -1;
+        if (a.request_date < b.request_date) return 1;
+        const ka = String(a.knitter || '').toUpperCase();
+        const kb = String(b.knitter || '').toUpperCase();
+        if (ka < kb) return -1;
+        if (ka > kb) return 1;
+        return Number(a.id || 0) - Number(b.id || 0);
+      });
+
+      requests = rows;
+      updateCounts();
+      renderWeeklyTable();
+    } catch (error) {
+      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">⚠️</span>' + esc(error.message) + '</div></td></tr>';
     }
-    requests = data || [];
-    updateCounts();
-    renderWeeklyTable();
   }
 
   function filterRequests() {
@@ -1141,21 +1209,14 @@
   async function markPickedUp(id) {
     if (!confirm('Mark pickup #' + id + ' as Picked Up?')) return;
     const coords = await getCoords();
-    const { error } = await supabase
-      .from('greige_pickup_requests')
-      .update({
-        status: 'Picked Up',
-        picked_up_at: new Date().toISOString(),
-        picked_up_by: session.user.id,
-        lat: coords?.lat ?? null,
-        lng: coords?.lng ?? null,
-      })
-      .eq('id', id);
-
-    if (error) { toast('Error: ' + error.message, 'error'); return; }
-    toast('Marked as picked up \u2713', 'success');
-    document.getElementById('detailOverlay').classList.remove('show');
-    await loadRequests();
+    try {
+      await api.markPickedUp(id, { lat: coords?.lat ?? null, lng: coords?.lng ?? null });
+      toast('Marked as picked up ✓', 'success');
+      document.getElementById('detailOverlay').classList.remove('show');
+      await loadRequests();
+    } catch (error) {
+      toast('Error: ' + error.message, 'error');
+    }
   }
 
   async function updateStatus(id, newStatus) {
@@ -1166,15 +1227,14 @@
       body.lat = null;
       body.lng = null;
     }
-    const { error } = await supabase
-      .from('greige_pickup_requests')
-      .update(body)
-      .eq('id', id);
-
-    if (error) { toast('Error: ' + error.message, 'error'); return; }
-    toast('Status \u2192 ' + newStatus, 'success');
-    document.getElementById('detailOverlay').classList.remove('show');
-    await loadRequests();
+    try {
+      await api.updateRequest(id, body);
+      toast('Status → ' + newStatus, 'success');
+      document.getElementById('detailOverlay').classList.remove('show');
+      await loadRequests();
+    } catch (error) {
+      toast('Error: ' + error.message, 'error');
+    }
   }
 
   // Expose to inline onclick
@@ -1202,11 +1262,11 @@
     const knitter = document.getElementById('f_knitter').value.trim().toUpperCase();
     if (!knitter) { toast('Knitter is required', 'error'); return; }
     const btn = document.getElementById('submitNewBtn');
-    btn.disabled = true; btn.textContent = 'Creating\u2026';
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
 
-    const { data, error } = await supabase
-      .from('greige_pickup_requests')
-      .insert({
+    try {
+      const payload = await api.createRequest({
         request_date: DATE_MAP.today,
         knitter: knitter,
         customer: document.getElementById('f_customer').value.trim().toUpperCase(),
@@ -1214,14 +1274,17 @@
         qty: Number(document.getElementById('f_qty').value) || 0,
         notes: document.getElementById('f_notes').value.trim() || null,
         status: 'Pending',
-      })
-      .select().single();
-
-    btn.disabled = false; btn.textContent = 'Create Pickup';
-    if (error) { toast('Error: ' + error.message, 'error'); return; }
-    toast('Pickup #' + data.id + ' created', 'success');
-    document.getElementById('newOverlay').classList.remove('show');
-    await loadRequests();
+      });
+      const created = extractRequest(payload) || {};
+      toast('Pickup #' + (created.id ?? '?') + ' created', 'success');
+      document.getElementById('newOverlay').classList.remove('show');
+      await loadRequests();
+    } catch (error) {
+      toast('Error: ' + error.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Create Pickup';
+    }
   });
 
   // ---- Other events ----
@@ -1231,17 +1294,13 @@
       toast('Only admins can run sync', 'error');
       return;
     }
-    if (!confirm('Sync today\'s pickup list from Google Doc now? This replaces today\'s rows in Supabase.')) return;
+    if (!confirm('Sync today\'s pickup list from Google Doc now? This refreshes today\'s rows from the backend source.')) return;
 
     const original = syncBtnEl.textContent;
     syncBtnEl.disabled = true;
     syncBtnEl.textContent = 'Syncing...';
     try {
-      const resp = await fetch('/.netlify/functions/sync-pickups-from-doc', { method: 'POST' });
-      const payload = await resp.json().catch(() => ({}));
-      if (!resp.ok || payload.error) {
-        throw new Error(payload.error || `Sync failed (${resp.status})`);
-      }
+      const payload = await api.syncFromSheet();
       refreshDateMap();
       document.getElementById('dayBeforeLabel').textContent = shortDate(DATE_MAP.dayBefore);
       if (currentDateFilter === 'today') {
@@ -1259,7 +1318,12 @@
       syncBtnEl.textContent = original;
     }
   });
-  document.getElementById('logoutBtn').addEventListener('click', () => { if (confirm('Sign out?')) signOut(); });
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    if (!confirm('Sign out?')) return;
+    sessionStorage.setItem('skipAutoLogin', '1');
+    clearSession();
+    location.replace('/index.html');
+  });
   document.getElementById('closeDetail').addEventListener('click', () => {
     document.getElementById('detailOverlay').classList.remove('show');
   });

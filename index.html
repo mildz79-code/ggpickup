@@ -173,25 +173,82 @@
   </div>
 
 <script type="module">
-  import { supabase, DRIVERS, signInAsDriver, getCurrentAppUser, signInAsAdmin, AUTO_LOGIN_EMAIL, AUTO_LOGIN_PASSWORD } from './supabase-client.js';
+  import { api, getToken, getUser, setSession, clearSession } from './api.js';
+
+  const DRIVERS = [
+    { email: 'driver1@colorfashiondnf.com', name: 'Driver 1' },
+    { email: 'driver2@colorfashiondnf.com', name: 'Driver 2' },
+    { email: 'driver3@colorfashiondnf.com', name: 'Driver 3' },
+  ];
+
+  // TODO: replace shared password with per-driver auth before production
+  const TEST_DRIVER_PASSWORD = 'Driver_CF_2026!';
+
+  // TODO: remove before production — dev auto-login
+  const AUTO_LOGIN_EMAIL = 'daniel@colorfashiondnf.com';
+  const AUTO_LOGIN_PASSWORD = 'Sangkl21@';
+
+  window.addEventListener('gg:unauthorized', () => {
+    // token expired or invalid — drop to login screen
+    location.reload();
+  });
+
+  function extractUser(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+    if (payload.user && typeof payload.user === 'object') return payload.user;
+    if (payload.data && payload.data.user && typeof payload.data.user === 'object') return payload.data.user;
+    if ('email' in payload || 'role' in payload || 'is_active' in payload) return payload;
+    return null;
+  }
+
+  function extractSession(payload) {
+    if (!payload || typeof payload !== 'object') return { token: null, user: null };
+    const token =
+      payload.token ||
+      payload.access_token ||
+      payload.jwt ||
+      payload.data?.token ||
+      payload.data?.access_token ||
+      null;
+    const user = extractUser(payload) || extractUser(payload.data) || null;
+    return { token, user };
+  }
+
+  async function signInWithCredentials(email, password) {
+    const payload = await api.login(email, password);
+    const { token, user } = extractSession(payload);
+    if (!token) throw new Error('Login response missing token');
+    setSession(token, user || null);
+    return { token, user };
+  }
+
+  async function resolveAppUser() {
+    const mePayload = await api.me();
+    return extractUser(mePayload);
+  }
 
   async function bootAuth() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) return { status: 'signed-in' };
+    if (getToken()) {
+      try {
+        const user = await resolveAppUser();
+        if (user) setSession(getToken(), user);
+        return { status: 'signed-in' };
+      } catch (err) {
+        console.warn('Session check failed:', err.message);
+      }
+    }
 
     if (sessionStorage.getItem('skipAutoLogin') === '1') {
       return { status: 'show-picker' };
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: AUTO_LOGIN_EMAIL,
-      password: AUTO_LOGIN_PASSWORD,
-    });
-    if (error) {
-      console.error('Auto-login failed:', error);
-      return { status: 'show-picker', error: error.message };
+    try {
+      await signInWithCredentials(AUTO_LOGIN_EMAIL, AUTO_LOGIN_PASSWORD);
+      return { status: 'signed-in' };
+    } catch (err) {
+      console.error('Auto-login failed:', err);
+      return { status: 'show-picker', error: err.message };
     }
-    return { status: 'signed-in' };
   }
 
   const result = await bootAuth();
@@ -225,11 +282,14 @@
       clearError();
       setLoading(true);
       try {
-        const { error } = await signInFn();
-        if (error) throw error;
-        const appUser = await getCurrentAppUser();
+        const { token, user: loginUser } = await signInFn();
+        let appUser = loginUser;
+        if (!appUser || appUser.is_active == null) {
+          appUser = await resolveAppUser();
+          if (appUser) setSession(token, appUser);
+        }
         if (!appUser || !appUser.is_active) {
-          await supabase.auth.signOut();
+          clearSession();
           throw new Error('Account not authorized. Contact your admin.');
         }
         window.location.replace('/app.html');
@@ -253,7 +313,7 @@
         const originalHtml = btn.innerHTML;
         btn.innerHTML = `<span class="driver-avatar"><span class="spinner"></span></span><span>Signing in…</span>`;
         sessionStorage.removeItem('skipAutoLogin');
-        handleSignIn(() => signInAsDriver(email), () => { btn.innerHTML = originalHtml; });
+        handleSignIn(() => signInWithCredentials(email, TEST_DRIVER_PASSWORD), () => { btn.innerHTML = originalHtml; });
       });
     });
 
@@ -262,7 +322,8 @@
       const link = e.currentTarget;
       const originalText = link.textContent;
       link.textContent = 'Signing in…';
-      handleSignIn(() => signInAsAdmin(), () => { link.textContent = originalText; });
+      sessionStorage.removeItem('skipAutoLogin');
+      handleSignIn(() => signInWithCredentials(AUTO_LOGIN_EMAIL, AUTO_LOGIN_PASSWORD), () => { link.textContent = originalText; });
     });
   }
 </script>

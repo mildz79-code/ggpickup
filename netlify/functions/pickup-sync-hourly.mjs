@@ -6,7 +6,7 @@ export const config = {
 
 /**
  * Scheduled sync: Netlify invokes this on the schedule in `export const config`.
- * Keeps today's rows in Supabase aligned with the Google Doc.
+ * Keeps today's rows aligned with the Google Doc.
  */
 export default async (req) => {
   let nextRun;
