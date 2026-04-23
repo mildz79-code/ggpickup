@@ -13,7 +13,7 @@
         { "key": "Permissions-Policy", "value": "geolocation=(self), camera=(self)" },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.sh https://*.supabase.co; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data: blob: https://*.supabase.co; style-src 'self' 'unsafe-inline'; font-src 'self' data:; media-src 'self' blob:;"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.sh https://*.supabase.co; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://gg.colorfashiondnf.com; img-src 'self' data: blob: https://*.supabase.co; style-src 'self' 'unsafe-inline'; font-src 'self' data:; media-src 'self' blob:;"
         }
       ]
     }

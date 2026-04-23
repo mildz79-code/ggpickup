@@ -414,6 +414,63 @@
   .empty { text-align: center; padding: 48px 20px; color: #999; font-size: 13px; }
   .empty .emoji { font-size: 36px; display: block; margin-bottom: 8px; opacity: 0.5; }
 
+  /* ---- Scan modal ---- */
+  .scan-match-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f0f4;
+    font-size: 13px;
+  }
+  .scan-match-row:last-child { border-bottom: none; }
+  .scan-match-info { flex: 1; min-width: 0; }
+  .scan-match-info .smr-knitter { font-weight: 600; color: #1a1a2e; }
+  .scan-match-info .smr-lot { font-family: 'SF Mono','Cascadia Code',Consolas,monospace; font-size: 11px; color: #666; margin-top: 2px; }
+  .scan-match-info .smr-meta { font-size: 11px; color: #888; margin-top: 1px; }
+  .scan-attach-btn {
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+    color: #3730a3;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .scan-attach-btn:hover { background: #e0e7ff; }
+  .scan-ocr-raw {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-family: 'SF Mono','Cascadia Code',Consolas,monospace;
+    font-size: 10px;
+    color: #666;
+    max-height: 90px;
+    overflow-y: auto;
+    word-break: break-all;
+    white-space: pre-wrap;
+    margin-top: 8px;
+  }
+  .scan-no-match-search {
+    margin-top: 10px;
+    display: flex;
+    gap: 6px;
+  }
+  .scan-no-match-search input {
+    flex: 1;
+    padding: 7px 10px;
+    border: 1px solid #d0d0d8;
+    border-radius: 5px;
+    font-size: 13px;
+    outline: none;
+    font-family: inherit;
+  }
+  .scan-no-match-search input:focus { border-color: #2563eb; }
+
   /* Mobile tweaks */
   @media (max-width: 600px) {
     .topbar { padding: 8px 12px; }
@@ -436,6 +493,8 @@
     </div>
     <div class="topbar-right">
       <button class="btn btn-primary" id="newBtn">+ New Pickup</button>
+      <button class="btn btn-secondary" id="scanBtn" style="display:none">📷 Scan Tag</button>
+      <input id="scanFileInput" type="file" accept="image/jpeg,image/png" capture="environment" style="display:none">
       <button class="btn btn-secondary" id="syncBtn" style="display:none">Sync Doc</button>
       <button class="btn-icon" id="refreshBtn" title="Refresh">↻</button>
       <button class="btn-icon" id="logoutBtn" title="Sign out">⎋</button>
@@ -542,6 +601,49 @@
     </div>
   </div>
 
+  <!-- Scan result / picker modal -->
+  <div class="modal-overlay" id="scanOverlay">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="scanModalTitle">Scan Result</h2>
+        <button class="modal-close" id="closeScan">&times;</button>
+      </div>
+      <div class="modal-body" id="scanModalBody"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="cancelScanBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin API login modal (needed to get FastAPI JWT before first scan) -->
+  <div class="modal-overlay" id="apiLoginOverlay">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Admin Sign-In (Scan API)</h2>
+        <button class="modal-close" id="closeApiLogin">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px;color:#555;margin-bottom:14px;">
+          Enter your admin credentials to enable the Scan feature.
+          This is separate from your Supabase session.
+        </p>
+        <div class="form-row">
+          <label>Username / Email</label>
+          <input id="apiLoginUser" type="text" autocomplete="username" placeholder="admin@colorfashiondnf.com">
+        </div>
+        <div class="form-row">
+          <label>Password</label>
+          <input id="apiLoginPass" type="password" autocomplete="current-password" placeholder="Password">
+        </div>
+        <div id="apiLoginErr" style="color:#dc2626;font-size:12px;margin-top:4px;display:none"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="cancelApiLogin">Cancel</button>
+        <button class="btn btn-primary" id="submitApiLogin">Sign In</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div class="toast" id="toastEl"></div>
 
@@ -552,6 +654,7 @@
     signOut,
     getCurrentAppUser,
   } from './supabase-client.js';
+  import { api, getToken, login as apiLogin, logout as apiLogout, isAdmin as apiIsAdmin } from './api.js';
 
   const session = await requireSession();
   if (!session) throw new Error('no session');
@@ -663,8 +766,12 @@
   let expandedKnitters = new Set();
   const syncBtnEl = document.getElementById('syncBtn');
 
+  const scanBtnEl = document.getElementById('scanBtn');
+  const scanFileInputEl = document.getElementById('scanFileInput');
+
   if (appUser.role === 'admin') {
     syncBtnEl.style.display = '';
+    scanBtnEl.style.display = '';
   }
 
   // ---- Week helpers ----
@@ -1268,6 +1375,244 @@
     document.getElementById(id).addEventListener('click', e => {
       if (e.target.id === id) e.target.classList.remove('show');
     });
+  });
+
+  // ---- Scan feature (admin-only) ----
+
+  // ── API login modal ──────────────────────────────────────────────────────
+  function openApiLoginModal(afterLogin) {
+    document.getElementById('apiLoginUser').value = '';
+    document.getElementById('apiLoginPass').value = '';
+    document.getElementById('apiLoginErr').style.display = 'none';
+    document.getElementById('apiLoginOverlay').classList.add('show');
+    document.getElementById('apiLoginOverlay')._afterLogin = afterLogin || null;
+  }
+
+  document.getElementById('closeApiLogin').addEventListener('click', () => {
+    document.getElementById('apiLoginOverlay').classList.remove('show');
+  });
+  document.getElementById('cancelApiLogin').addEventListener('click', () => {
+    document.getElementById('apiLoginOverlay').classList.remove('show');
+  });
+  document.getElementById('apiLoginOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'apiLoginOverlay') e.target.classList.remove('show');
+  });
+
+  document.getElementById('submitApiLogin').addEventListener('click', async () => {
+    const userEl = document.getElementById('apiLoginUser');
+    const passEl = document.getElementById('apiLoginPass');
+    const errEl = document.getElementById('apiLoginErr');
+    const btn = document.getElementById('submitApiLogin');
+    errEl.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+    try {
+      await apiLogin(userEl.value.trim(), passEl.value);
+      document.getElementById('apiLoginOverlay').classList.remove('show');
+      const cb = document.getElementById('apiLoginOverlay')._afterLogin;
+      if (typeof cb === 'function') cb();
+    } catch (err) {
+      errEl.textContent = err.message || 'Sign-in failed';
+      errEl.style.display = '';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+    }
+  });
+
+  // Allow pressing Enter in password field to submit
+  document.getElementById('apiLoginPass').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('submitApiLogin').click();
+  });
+
+  // ── Scan modal helpers ───────────────────────────────────────────────────
+  function openScanModal(title, bodyHtml) {
+    document.getElementById('scanModalTitle').textContent = title;
+    document.getElementById('scanModalBody').innerHTML = bodyHtml;
+    document.getElementById('scanOverlay').classList.add('show');
+  }
+
+  function closeScanModal() {
+    document.getElementById('scanOverlay').classList.remove('show');
+    document.getElementById('scanModalBody').innerHTML = '';
+  }
+
+  document.getElementById('closeScan').addEventListener('click', closeScanModal);
+  document.getElementById('cancelScanBtn').addEventListener('click', closeScanModal);
+  document.getElementById('scanOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'scanOverlay') closeScanModal();
+  });
+
+  // ── Scan result handler ──────────────────────────────────────────────────
+  function handleScanResult(res) {
+    if (res.status === 'auto_attached') {
+      const m = res.matches[0];
+      toast(
+        `✓ Attached to #${m.id} · ${m.knitter} · Lot ${m.lot_number || '—'} · Picked Up`,
+        'success'
+      );
+      loadRequests();
+    } else if (res.status === 'multiple_matches') {
+      showMatchPicker(res, 'multiple_matches');
+    } else {
+      showMatchPicker(res, 'no_match');
+    }
+  }
+
+  // ── Picker modal (multi-match and no-match) ──────────────────────────────
+  function buildMatchRowHtml(m, saved_path) {
+    return `
+      <div class="scan-match-row">
+        <div class="scan-match-info">
+          <div class="smr-knitter">${esc(m.knitter || '—')}</div>
+          <div class="smr-lot">Lot: ${esc(m.lot_number || '—')}</div>
+          <div class="smr-meta">Customer: ${esc(m.customer || '—')} · Qty: ${m.qty ?? 0}</div>
+        </div>
+        <button class="scan-attach-btn"
+          data-req-id="${m.id}"
+          data-saved-path="${esc(saved_path)}">
+          Attach + Pick Up
+        </button>
+      </div>`;
+  }
+
+  async function attachAndClose(requestId, savedPath) {
+    try {
+      await api.attachScan(savedPath, requestId, true);
+      closeScanModal();
+      toast(`✓ Attached to request #${requestId} · Picked Up`, 'success');
+      loadRequests();
+    } catch (err) {
+      toast('Attach failed: ' + err.message, 'error');
+    }
+  }
+
+  function bindAttachButtons() {
+    document.querySelectorAll('.scan-attach-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const reqId = Number(btn.dataset.reqId);
+        const sp = btn.dataset.savedPath;
+        btn.disabled = true;
+        btn.textContent = 'Attaching…';
+        await attachAndClose(reqId, sp);
+      });
+    });
+  }
+
+  // Fetch today's pending requests for the no-match search
+  async function fetchTodayPending() {
+    try {
+      const today = DATE_MAP.today;
+      const { data, error } = await supabase
+        .from('greige_pickup_requests')
+        .select('id, knitter, customer, qty, lot_number')
+        .eq('request_date', today)
+        .eq('status', 'Pending')
+        .order('knitter', { ascending: true });
+      if (error) return [];
+      return data || [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function showMatchPicker(res, mode) {
+    const savedPath = res.saved_path || '';
+    let title, bodyHtml;
+
+    const candidateStr = (res.candidates || []).length > 0
+      ? `Candidates found: <strong>${esc(res.candidates.join(', '))}</strong>`
+      : 'No lot# candidates extracted from scan.';
+
+    if (mode === 'multiple_matches') {
+      title = `${res.matches.length} Matches Found`;
+      bodyHtml = `
+        <p style="font-size:12px;color:#555;margin-bottom:10px">${candidateStr}<br>
+        Choose the correct request to attach this scan to:</p>
+        ${res.matches.map(m => buildMatchRowHtml(m, savedPath)).join('')}
+        <details style="margin-top:12px">
+          <summary style="font-size:11px;color:#888;cursor:pointer">Raw OCR text</summary>
+          <div class="scan-ocr-raw">${esc(res.ocr_text || '(empty)')}</div>
+        </details>`;
+    } else {
+      // no_match — load today's pending list so admin can pick one manually
+      title = 'No Auto-Match — Attach Manually';
+      bodyHtml = `
+        <p style="font-size:12px;color:#555;margin-bottom:10px">${candidateStr}<br>
+        No matching Pending request found for today. Search below to attach manually:</p>
+        <div class="scan-no-match-search">
+          <input id="scanSearchInput" type="text" placeholder="Search knitter / lot / customer…">
+        </div>
+        <div id="scanSearchResults" style="margin-top:8px"></div>
+        <details style="margin-top:12px">
+          <summary style="font-size:11px;color:#888;cursor:pointer">Raw OCR text</summary>
+          <div class="scan-ocr-raw">${esc(res.ocr_text || '(empty)')}</div>
+        </details>`;
+    }
+
+    openScanModal(title, bodyHtml);
+    bindAttachButtons();
+
+    if (mode === 'no_match') {
+      const allPending = await fetchTodayPending();
+      const resultsEl = document.getElementById('scanSearchResults');
+      const searchEl = document.getElementById('scanSearchInput');
+
+      function renderSearchResults(filter) {
+        const q = filter.toLowerCase();
+        const filtered = allPending.filter(m =>
+          !q ||
+          (m.knitter || '').toLowerCase().includes(q) ||
+          (m.lot_number || '').toLowerCase().includes(q) ||
+          (m.customer || '').toLowerCase().includes(q)
+        );
+        if (filtered.length === 0) {
+          resultsEl.innerHTML = '<div style="font-size:12px;color:#999;padding:8px 0">No matching pending requests.</div>';
+          return;
+        }
+        resultsEl.innerHTML = filtered.map(m => buildMatchRowHtml(m, savedPath)).join('');
+        bindAttachButtons();
+      }
+
+      renderSearchResults('');
+      searchEl.addEventListener('input', (e) => renderSearchResults(e.target.value));
+    }
+  }
+
+  // ── Scan button wiring ───────────────────────────────────────────────────
+  function doScan() {
+    if (!getToken()) {
+      // No FastAPI token yet — open login modal first
+      openApiLoginModal(() => scanFileInputEl.click());
+      return;
+    }
+    scanFileInputEl.click();
+  }
+
+  scanBtnEl.addEventListener('click', doScan);
+
+  scanFileInputEl.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    scanBtnEl.disabled = true;
+    scanBtnEl.textContent = 'Scanning…';
+    try {
+      const res = await api.scanImage(file);
+      handleScanResult(res);
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) {
+        // Token expired or invalid — re-auth then let user retry manually
+        apiLogout();
+        toast('Session expired — please sign in again and re-scan.', 'error');
+        openApiLoginModal(null);
+      } else {
+        toast('Scan failed: ' + (err.message || 'Unknown error'), 'error');
+      }
+    } finally {
+      scanBtnEl.disabled = false;
+      scanBtnEl.textContent = '📷 Scan Tag';
+      scanFileInputEl.value = '';  // allow re-selecting same file
+    }
   });
 
   // ---- Boot ----
