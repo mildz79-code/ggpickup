@@ -173,25 +173,48 @@
   </div>
 
 <script type="module">
-  import { supabase, DRIVERS, signInAsDriver, getCurrentAppUser, signInAsAdmin, AUTO_LOGIN_EMAIL, AUTO_LOGIN_PASSWORD } from './supabase-client.js';
+  import { api, getToken, getUser, setSession, clearSession } from './api.js';
+
+  window.addEventListener('gg:unauthorized', () => {
+    // token expired or invalid — drop to login screen
+    location.reload();
+  });
+
+  // Drivers list — email + display name (password stored here for the
+  // shared TEST_DRIVER_PASSWORD flow; replace with per-driver auth later)
+  const DRIVERS = [
+    { email: 'driver1@colorfashiondnf.com', name: 'Driver 1' },
+    { email: 'driver2@colorfashiondnf.com', name: 'Driver 2' },
+    { email: 'driver3@colorfashiondnf.com', name: 'Driver 3' },
+  ];
+  const TEST_DRIVER_PASSWORD = 'Driver_CF_2026!';
+  const AUTO_LOGIN_EMAIL    = 'daniel@colorfashiondnf.com';
+  const AUTO_LOGIN_PASSWORD = 'CF2026admin';
 
   async function bootAuth() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) return { status: 'signed-in' };
+    // If we already have a valid token, go straight to app
+    if (getToken()) {
+      try {
+        await api.me(); // validates token against server
+        return { status: 'signed-in' };
+      } catch {
+        clearSession();
+      }
+    }
 
     if (sessionStorage.getItem('skipAutoLogin') === '1') {
       return { status: 'show-picker' };
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: AUTO_LOGIN_EMAIL,
-      password: AUTO_LOGIN_PASSWORD,
-    });
-    if (error) {
-      console.error('Auto-login failed:', error);
-      return { status: 'show-picker', error: error.message };
+    // Auto-login as Daniel (admin)
+    try {
+      const { access_token, user } = await api.login(AUTO_LOGIN_EMAIL, AUTO_LOGIN_PASSWORD);
+      setSession(access_token, user);
+      return { status: 'signed-in' };
+    } catch (err) {
+      console.error('Auto-login failed:', err);
+      return { status: 'show-picker', error: err.message };
     }
-    return { status: 'signed-in' };
   }
 
   const result = await bootAuth();
@@ -221,15 +244,14 @@
 
     if (result.error) showError(`Auto-login failed: ${result.error}`);
 
-    async function handleSignIn(signInFn, labelRestore) {
+    async function handleSignIn(email, password, labelRestore) {
       clearError();
       setLoading(true);
       try {
-        const { error } = await signInFn();
-        if (error) throw error;
-        const appUser = await getCurrentAppUser();
-        if (!appUser || !appUser.is_active) {
-          await supabase.auth.signOut();
+        const { access_token, user } = await api.login(email, password);
+        setSession(access_token, user);
+        if (!user || !user.is_active) {
+          clearSession();
           throw new Error('Account not authorized. Contact your admin.');
         }
         window.location.replace('/app.html');
@@ -253,7 +275,7 @@
         const originalHtml = btn.innerHTML;
         btn.innerHTML = `<span class="driver-avatar"><span class="spinner"></span></span><span>Signing in…</span>`;
         sessionStorage.removeItem('skipAutoLogin');
-        handleSignIn(() => signInAsDriver(email), () => { btn.innerHTML = originalHtml; });
+        handleSignIn(email, TEST_DRIVER_PASSWORD, () => { btn.innerHTML = originalHtml; });
       });
     });
 
@@ -262,7 +284,7 @@
       const link = e.currentTarget;
       const originalText = link.textContent;
       link.textContent = 'Signing in…';
-      handleSignIn(() => signInAsAdmin(), () => { link.textContent = originalText; });
+      handleSignIn(AUTO_LOGIN_EMAIL, AUTO_LOGIN_PASSWORD, () => { link.textContent = originalText; });
     });
   }
 </script>

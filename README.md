@@ -1,60 +1,49 @@
 # GG Pickup
 
-Driver app for Color Fashion greige goods pickups. Mobile-first, static, Supabase-backed.
+Driver app for Color Fashion greige goods pickups. Mobile-first, static HTML app backed by a local FastAPI service.
 
 **Live:** https://gg.colorfashiondnf.com
 
 ## Stack
 
 - Static HTML/JS (no build)
-- Hosted on Netlify (`colorfashiondnf` project)
-- Supabase for auth + data + photo storage (Color Fashion project)
+- Hosted on Netlify (`colorfashiondnf` project) / IIS on WEBSERVER
+- FastAPI backend (`C:\ai\ggapi\main.py`) running on port 8001, proxied via IIS URL Rewrite to `/api/*`
+- JWT auth (HS256, 12h expiry) — token stored in `localStorage`
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `index.html` | Login page |
+| `index.html` | Login page (driver picker + admin auto-login) |
 | `app.html` | Main driver app (list, detail, camera, mark picked up) |
-| `supabase-client.js` | Shared client + session helper |
+| `api.js` | Centralised API client — all `/api/*` calls go through here |
 | `netlify.toml` | Netlify config + security headers |
 
 ## Database
 
-Lives in the Color Fashion Supabase project (`cgsmzkafagnmsuzzkfnv`):
+Managed by the FastAPI backend (`C:\ai\ggapi\`):
 
 - `greige_pickup_requests` — request list with status (`Pending` / `Picked Up` / `Cancelled`)
-- `greige_pickup_photos` — photo metadata, FK to request
-- `app_users` — role-based access (`admin`, `user`, `driver`), flagged active via `is_active`
-- `ship_to_locations` — seeded customer addresses used for the new-pickup typeahead
-- Storage bucket `greige-pickup-photos` (private, 10 MB limit, images only)
+- `app_users` — role-based access (`admin`, `driver`), flagged active via `is_active`
 
 ## Adding a driver account
 
-1. Create the auth user in Supabase → Authentication → Users (email + password).
-2. Insert into `app_users` with `role = 'driver'` and `is_active = true`. Example:
-
-   ```sql
-   INSERT INTO app_users (id, email, full_name, role, is_active)
-   VALUES ('<auth-user-uuid>', 'driver@example.com', 'Driver Name', 'driver', true);
-   ```
-
+1. Add the user via the FastAPI admin API or directly in the database.
+2. Set `role = 'driver'` and `is_active = true`.
 3. Share the login URL + credentials with the driver.
 
 ## Testing-mode auth (current)
 
-The app currently runs in **shared-password test mode**. `supabase-client.js`
-exports a hard-coded `TEST_DRIVER_PASSWORD` and a `DRIVERS` list; the login
-page shows those drivers as tap-to-sign-in buttons. A yellow banner on every
-page flags this.
+The app currently runs in **shared-password test mode**. `index.html` has a
+hard-coded `TEST_DRIVER_PASSWORD` and `DRIVERS` list; the login page shows
+those drivers as tap-to-sign-in buttons. A yellow banner flags this.
 
 Before production:
 
-1. Create per-driver passwords in Supabase Authentication.
-2. Remove `TEST_DRIVER_PASSWORD`, `DRIVERS`, and `signInAsDriver()` from
-   `supabase-client.js`.
-3. Replace the driver picker in `index.html` with a standard email/password
-   form (the admin panel already shows the pattern).
+1. Create per-driver passwords in the FastAPI user store.
+2. Remove `TEST_DRIVER_PASSWORD`, `DRIVERS` constants from `index.html`.
+3. Replace the driver picker with a standard email/password form.
 4. Remove the `.test-banner` markup from `index.html` and `app.html`.
 5. Rotate the seeded admin password (`daniel@colorfashiondnf.com`).
 
@@ -68,67 +57,53 @@ git commit -m "Update driver app"
 git push origin main
 ```
 
+The actual production copy served to users is `D:\Data\Web\gg\` on WEBSERVER
+(served by IIS at gg.colorfashiondnf.com). Confirm with Daniel whether the
+Netlify deploy or the IIS copy is the one users hit in production.
+
 ## Local testing
 
-Just serve the files:
+Just serve the files and point at a running FastAPI backend:
 
 ```bash
 python3 -m http.server 8000
 ```
 
-Then open http://localhost:8000.
+Then open http://localhost:8000 — you'll need `/api/*` proxied to the FastAPI
+service (or run FastAPI with CORS enabled for localhost).
 
-## Google Docs -> Today's pickup sync
+## Google Docs → Today's pickup sync
 
-This repo now includes Netlify Functions:
+This repo includes Netlify Functions:
 
-- `POST /.netlify/functions/sync-pickups-from-doc` — manual sync (admin **Sync Doc** button)
-- `GET /.netlify/functions/pickup-sync-config` — returns `{ timezone, todayISO }` so the app uses the same calendar day as the server
-- `pickup-sync-hourly` — scheduled sync (hourly) so Supabase stays aligned with the Google Doc after deploy
+- `POST /.netlify/functions/sync-pickups-from-doc` — manual trigger (wires through to `lib/google-doc-sync.js`)
+- `GET /.netlify/functions/pickup-sync-config` — returns `{ timezone, todayISO }` for date alignment
+- `pickup-sync-hourly` — scheduled (hourly) sync from Google Sheet to the backend
 
-The sync reads tables from a configured Google Doc and replaces **today's**
-rows in `greige_pickup_requests` with today's rows from the doc. **Today** uses
-the timezone `PICKUP_DATE_TIMEZONE` (default `America/New_York`) so Netlify
-(UTC) and your doc dates stay aligned.
-
-### Expected Google Doc table headers
-
-At minimum, include these columns in a table header row:
-
-- `Date`
-- `Knitter`
-
-Optional columns:
-
-- `Customer`
-- `Qty` / `Quantity` / `Lots`
-- `Lot` / `Lot #` / `Lot Number`
-- `Status`
-- `Notes`
-
-Rows with invalid/missing date or knitter are skipped.
+The sync reads rows from a configured Google Sheet and replaces **today's**
+rows via the FastAPI `POST /api/pickup-requests/sync-day` endpoint. **Today**
+uses the timezone `PICKUP_DATE_TIMEZONE` (default `America/New_York`).
 
 ### Required Netlify environment variables
 
-- `GOOGLE_DOC_ID` (Doc ID from URL)
+- `GOOGLE_DOC_ID` (Sheet ID from URL)
 - `GOOGLE_SERVICE_ACCOUNT_EMAIL`
 - `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (paste full key; escaped `\n` is handled)
-- `SUPABASE_URL` (e.g. `https://<project>.supabase.co`)
-- `SUPABASE_SERVICE_ROLE_KEY` (server key; never expose in client code)
+- `GG_API_URL` (e.g. `https://gg.colorfashiondnf.com/api`)
+- `GG_API_TOKEN` (service token for the FastAPI backend)
 
 Optional:
 
-- `PICKUP_DATE_TIMEZONE` — IANA zone for “today” (default `America/New_York`). Set to match where your doc dates are authored (e.g. `America/Los_Angeles`).
+- `PICKUP_DATE_TIMEZONE` — IANA zone for "today" (default `America/New_York`).
 
-Also share the Google Doc with the service account email (Viewer).
+Also share the Google Sheet with the service account email (Viewer).
 
 ### App usage
 
 Admins can click the **Sync Doc** button in `app.html` to run sync on demand.
 The button is hidden for non-admin users.
 
-## Notess
+## Notes
 
-- Uses Supabase publishable (anon) key — safe to ship in the client. Server-side is protected by RLS.
 - The camera uses `<input type="file" capture="environment">`, which opens the rear camera on phones and falls back to file picker on desktop.
-- Geolocation is requested at upload + mark-picked-up; it's optional and fails silently.
+- Geolocation is requested at mark-picked-up; it's optional and fails silently.

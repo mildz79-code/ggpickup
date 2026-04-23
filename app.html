@@ -546,19 +546,28 @@
   <div class="toast" id="toastEl"></div>
 
 <script type="module">
-  import {
-    supabase,
-    requireSession,
-    signOut,
-    getCurrentAppUser,
-  } from './supabase-client.js';
+  import { api, getToken, getUser, clearSession } from './api.js';
 
-  const session = await requireSession();
-  if (!session) throw new Error('no session');
+  window.addEventListener('gg:unauthorized', () => {
+    location.reload();
+  });
 
-  const appUser = await getCurrentAppUser();
+  // Guard: require a token; if missing or invalid, redirect to login
+  if (!getToken()) {
+    window.location.replace('/index.html');
+    throw new Error('no session');
+  }
+
+  let appUser;
+  try {
+    appUser = await api.me();
+  } catch {
+    clearSession();
+    window.location.replace('/index.html');
+    throw new Error('not authorized');
+  }
   if (!appUser || !appUser.is_active) {
-    await supabase.auth.signOut();
+    clearSession();
     window.location.replace('/index.html');
     throw new Error('not authorized');
   }
@@ -789,29 +798,22 @@
     document.getElementById('tableFoot').style.display = 'none';
 
     const dateToLoad = DATE_MAP[currentDateFilter] || DATE_MAP.today;
-    let query = supabase
-      .from('greige_pickup_requests')
-      .select('*')
-      .eq('request_date', dateToLoad)
-      .order('knitter', { ascending: true });
+    const params = { request_date: dateToLoad };
 
     if (currentFilter === 'Pending') {
-      query = query.eq('status', 'Pending');
-    } else if (currentFilter === 'all') {
-      // no status filter
-    } else if (currentFilter === 'today' || currentFilter === 'yesterday' || currentFilter === 'dayBefore') {
-      // no status filter for date tabs
+      params.status = 'Pending';
     } else if (currentFilter === 'Picked Up') {
-      query = query.eq('status', 'Picked Up');
+      params.status = 'Picked Up';
     }
+    // 'all', 'today', 'yesterday', 'dayBefore' — no status filter
 
-    const { data, error } = await query.order('id', { ascending: true });
-
-    if (error) {
-      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(error.message) + '</div></td></tr>';
+    try {
+      const data = await api.listRequests(params);
+      requests = data || [];
+    } catch (err) {
+      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(err.message) + '</div></td></tr>';
       return;
     }
-    requests = data || [];
     updateCounts();
     renderTable();
   }
@@ -821,21 +823,17 @@
     document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="loading"><span class="spinner"></span>Loading\u2026</div></td></tr>';
     document.getElementById('tableFoot').style.display = 'none';
 
-    const { data, error } = await supabase
-      .from('greige_pickup_requests')
-      .select('*')
-      .gte('request_date', startISO)
-      .lte('request_date', endISO)
-      .eq('status', 'Picked Up')
-      .order('request_date', { ascending: false })
-      .order('knitter', { ascending: true })
-      .order('id', { ascending: true });
-
-    if (error) {
-      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(error.message) + '</div></td></tr>';
+    try {
+      const data = await api.listRequests({
+        date_from: startISO,
+        date_to: endISO,
+        status: 'Picked Up',
+      });
+      requests = data || [];
+    } catch (err) {
+      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(err.message) + '</div></td></tr>';
       return;
     }
-    requests = data || [];
     updateCounts();
     renderWeeklyTable();
   }
@@ -1141,37 +1139,24 @@
   async function markPickedUp(id) {
     if (!confirm('Mark pickup #' + id + ' as Picked Up?')) return;
     const coords = await getCoords();
-    const { error } = await supabase
-      .from('greige_pickup_requests')
-      .update({
-        status: 'Picked Up',
-        picked_up_at: new Date().toISOString(),
-        picked_up_by: session.user.id,
-        lat: coords?.lat ?? null,
-        lng: coords?.lng ?? null,
-      })
-      .eq('id', id);
-
-    if (error) { toast('Error: ' + error.message, 'error'); return; }
+    try {
+      await api.markPickedUp(id, { lat: coords?.lat ?? null, lng: coords?.lng ?? null });
+    } catch (err) {
+      toast('Error: ' + err.message, 'error');
+      return;
+    }
     toast('Marked as picked up \u2713', 'success');
     document.getElementById('detailOverlay').classList.remove('show');
     await loadRequests();
   }
 
   async function updateStatus(id, newStatus) {
-    const body = { status: newStatus };
-    if (newStatus === 'Pending') {
-      body.picked_up_at = null;
-      body.picked_up_by = null;
-      body.lat = null;
-      body.lng = null;
+    try {
+      await api.updateRequest(id, { status: newStatus });
+    } catch (err) {
+      toast('Error: ' + err.message, 'error');
+      return;
     }
-    const { error } = await supabase
-      .from('greige_pickup_requests')
-      .update(body)
-      .eq('id', id);
-
-    if (error) { toast('Error: ' + error.message, 'error'); return; }
     toast('Status \u2192 ' + newStatus, 'success');
     document.getElementById('detailOverlay').classList.remove('show');
     await loadRequests();
@@ -1204,9 +1189,8 @@
     const btn = document.getElementById('submitNewBtn');
     btn.disabled = true; btn.textContent = 'Creating\u2026';
 
-    const { data, error } = await supabase
-      .from('greige_pickup_requests')
-      .insert({
+    try {
+      const data = await api.createRequest({
         request_date: DATE_MAP.today,
         knitter: knitter,
         customer: document.getElementById('f_customer').value.trim().toUpperCase(),
@@ -1214,14 +1198,15 @@
         qty: Number(document.getElementById('f_qty').value) || 0,
         notes: document.getElementById('f_notes').value.trim() || null,
         status: 'Pending',
-      })
-      .select().single();
-
-    btn.disabled = false; btn.textContent = 'Create Pickup';
-    if (error) { toast('Error: ' + error.message, 'error'); return; }
-    toast('Pickup #' + data.id + ' created', 'success');
-    document.getElementById('newOverlay').classList.remove('show');
-    await loadRequests();
+      });
+      toast('Pickup #' + data.id + ' created', 'success');
+      document.getElementById('newOverlay').classList.remove('show');
+      await loadRequests();
+    } catch (err) {
+      toast('Error: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Create Pickup';
+    }
   });
 
   // ---- Other events ----
@@ -1231,17 +1216,13 @@
       toast('Only admins can run sync', 'error');
       return;
     }
-    if (!confirm('Sync today\'s pickup list from Google Doc now? This replaces today\'s rows in Supabase.')) return;
+    if (!confirm('Sync today\'s pickup list from Google Doc now? This replaces today\'s rows.')) return;
 
     const original = syncBtnEl.textContent;
     syncBtnEl.disabled = true;
     syncBtnEl.textContent = 'Syncing...';
     try {
-      const resp = await fetch('/.netlify/functions/sync-pickups-from-doc', { method: 'POST' });
-      const payload = await resp.json().catch(() => ({}));
-      if (!resp.ok || payload.error) {
-        throw new Error(payload.error || `Sync failed (${resp.status})`);
-      }
+      const payload = await api.syncFromSheet();
       refreshDateMap();
       document.getElementById('dayBeforeLabel').textContent = shortDate(DATE_MAP.dayBefore);
       if (currentDateFilter === 'today') {
@@ -1259,7 +1240,13 @@
       syncBtnEl.textContent = original;
     }
   });
-  document.getElementById('logoutBtn').addEventListener('click', () => { if (confirm('Sign out?')) signOut(); });
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    if (confirm('Sign out?')) {
+      sessionStorage.setItem('skipAutoLogin', '1');
+      clearSession();
+      window.location.replace('/index.html');
+    }
+  });
   document.getElementById('closeDetail').addEventListener('click', () => {
     document.getElementById('detailOverlay').classList.remove('show');
   });
