@@ -546,22 +546,48 @@
   <div class="toast" id="toastEl"></div>
 
 <script type="module">
-  import {
-    supabase,
-    requireSession,
-    signOut,
-    getCurrentAppUser,
-  } from './supabase-client.js';
+  import { api, getToken, getUser, setSession, clearSession } from './api.js';
 
-  const session = await requireSession();
+  window.addEventListener('gg:unauthorized', () => {
+    sessionStorage.setItem('skipAutoLogin', '1');
+    window.location.replace('/index.html');
+  });
+
+  function requireSession() {
+    if (!getToken()) {
+      window.location.replace('/index.html');
+      return null;
+    }
+    return { token: getToken(), user: getUser() };
+  }
+
+  function signOut() {
+    sessionStorage.setItem('skipAutoLogin', '1');
+    clearSession();
+    window.location.replace('/index.html');
+  }
+
+  const session = requireSession();
   if (!session) throw new Error('no session');
 
-  const appUser = await getCurrentAppUser();
-  if (!appUser || !appUser.is_active) {
-    await supabase.auth.signOut();
+  let appUser;
+  try {
+    appUser = await api.me();
+  } catch (err) {
+    console.error('api.me() failed:', err);
+    clearSession();
+    sessionStorage.setItem('skipAutoLogin', '1');
+    window.location.replace('/index.html');
+    throw err;
+  }
+  if (!appUser || appUser.is_active === false) {
+    clearSession();
+    sessionStorage.setItem('skipAutoLogin', '1');
     window.location.replace('/index.html');
     throw new Error('not authorized');
   }
+  // keep localStorage user fresh with the authoritative copy from /auth/me
+  setSession(getToken(), appUser);
 
   // ---- Helpers ----
   /** Calendar date in a specific IANA timezone (YYYY-MM-DD). */
@@ -595,7 +621,7 @@
     return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
 
-  /** Matches server sync timezone when available (see Netlify `pickup-sync-config`). */
+  /** Browser-local timezone; can be overridden once the FastAPI backend exposes a config endpoint. */
   let PICKUP_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   let DATE_MAP = {
     today: todayISOInTZ(PICKUP_TZ),
@@ -613,15 +639,9 @@
   }
 
   async function loadPickupDateConfig() {
-    try {
-      const resp = await fetch('/.netlify/functions/pickup-sync-config');
-      if (!resp.ok) return;
-      const cfg = await resp.json();
-      if (cfg.timezone) PICKUP_TZ = cfg.timezone;
-      refreshDateMap();
-    } catch {
-      /* offline or function not deployed */
-    }
+    // The local FastAPI backend doesn't expose a sync-config endpoint right now;
+    // fall back to the browser timezone. Retain the hook so a future /api/config can plug in.
+    refreshDateMap();
   }
 
   function formatDate(iso) {
@@ -789,31 +809,18 @@
     document.getElementById('tableFoot').style.display = 'none';
 
     const dateToLoad = DATE_MAP[currentDateFilter] || DATE_MAP.today;
-    let query = supabase
-      .from('greige_pickup_requests')
-      .select('*')
-      .eq('request_date', dateToLoad)
-      .order('knitter', { ascending: true });
+    const params = { request_date: dateToLoad };
+    if (currentFilter === 'Pending')       params.status = 'Pending';
+    else if (currentFilter === 'Picked Up') params.status = 'Picked Up';
 
-    if (currentFilter === 'Pending') {
-      query = query.eq('status', 'Pending');
-    } else if (currentFilter === 'all') {
-      // no status filter
-    } else if (currentFilter === 'today' || currentFilter === 'yesterday' || currentFilter === 'dayBefore') {
-      // no status filter for date tabs
-    } else if (currentFilter === 'Picked Up') {
-      query = query.eq('status', 'Picked Up');
+    try {
+      const data = await api.listRequests(params);
+      requests = Array.isArray(data) ? data : (data?.items || []);
+      updateCounts();
+      renderTable();
+    } catch (err) {
+      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(err.message || String(err)) + '</div></td></tr>';
     }
-
-    const { data, error } = await query.order('id', { ascending: true });
-
-    if (error) {
-      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(error.message) + '</div></td></tr>';
-      return;
-    }
-    requests = data || [];
-    updateCounts();
-    renderTable();
   }
 
   // ---- Load data for a week range ----
@@ -821,23 +828,18 @@
     document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="loading"><span class="spinner"></span>Loading\u2026</div></td></tr>';
     document.getElementById('tableFoot').style.display = 'none';
 
-    const { data, error } = await supabase
-      .from('greige_pickup_requests')
-      .select('*')
-      .gte('request_date', startISO)
-      .lte('request_date', endISO)
-      .eq('status', 'Picked Up')
-      .order('request_date', { ascending: false })
-      .order('knitter', { ascending: true })
-      .order('id', { ascending: true });
-
-    if (error) {
-      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(error.message) + '</div></td></tr>';
-      return;
+    try {
+      const data = await api.listRequests({
+        date_from: startISO,
+        date_to: endISO,
+        status: 'Picked Up',
+      });
+      requests = Array.isArray(data) ? data : (data?.items || []);
+      updateCounts();
+      renderWeeklyTable();
+    } catch (err) {
+      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">\u26a0\ufe0f</span>' + esc(err.message || String(err)) + '</div></td></tr>';
     }
-    requests = data || [];
-    updateCounts();
-    renderWeeklyTable();
   }
 
   function filterRequests() {
@@ -1141,40 +1143,32 @@
   async function markPickedUp(id) {
     if (!confirm('Mark pickup #' + id + ' as Picked Up?')) return;
     const coords = await getCoords();
-    const { error } = await supabase
-      .from('greige_pickup_requests')
-      .update({
-        status: 'Picked Up',
-        picked_up_at: new Date().toISOString(),
-        picked_up_by: session.user.id,
-        lat: coords?.lat ?? null,
-        lng: coords?.lng ?? null,
-      })
-      .eq('id', id);
-
-    if (error) { toast('Error: ' + error.message, 'error'); return; }
-    toast('Marked as picked up \u2713', 'success');
-    document.getElementById('detailOverlay').classList.remove('show');
-    await loadRequests();
+    try {
+      await api.markPickedUp(id, { lat: coords?.lat ?? null, lng: coords?.lng ?? null });
+      toast('Marked as picked up \u2713', 'success');
+      document.getElementById('detailOverlay').classList.remove('show');
+      await loadRequests();
+    } catch (err) {
+      toast('Error: ' + (err.message || String(err)), 'error');
+    }
   }
 
   async function updateStatus(id, newStatus) {
-    const body = { status: newStatus };
+    const patch = { status: newStatus };
     if (newStatus === 'Pending') {
-      body.picked_up_at = null;
-      body.picked_up_by = null;
-      body.lat = null;
-      body.lng = null;
+      patch.picked_up_at = null;
+      patch.picked_up_by = null;
+      patch.lat = null;
+      patch.lng = null;
     }
-    const { error } = await supabase
-      .from('greige_pickup_requests')
-      .update(body)
-      .eq('id', id);
-
-    if (error) { toast('Error: ' + error.message, 'error'); return; }
-    toast('Status \u2192 ' + newStatus, 'success');
-    document.getElementById('detailOverlay').classList.remove('show');
-    await loadRequests();
+    try {
+      await api.updateRequest(id, patch);
+      toast('Status \u2192 ' + newStatus, 'success');
+      document.getElementById('detailOverlay').classList.remove('show');
+      await loadRequests();
+    } catch (err) {
+      toast('Error: ' + (err.message || String(err)), 'error');
+    }
   }
 
   // Expose to inline onclick
@@ -1204,9 +1198,8 @@
     const btn = document.getElementById('submitNewBtn');
     btn.disabled = true; btn.textContent = 'Creating\u2026';
 
-    const { data, error } = await supabase
-      .from('greige_pickup_requests')
-      .insert({
+    try {
+      const data = await api.createRequest({
         request_date: DATE_MAP.today,
         knitter: knitter,
         customer: document.getElementById('f_customer').value.trim().toUpperCase(),
@@ -1214,14 +1207,15 @@
         qty: Number(document.getElementById('f_qty').value) || 0,
         notes: document.getElementById('f_notes').value.trim() || null,
         status: 'Pending',
-      })
-      .select().single();
-
-    btn.disabled = false; btn.textContent = 'Create Pickup';
-    if (error) { toast('Error: ' + error.message, 'error'); return; }
-    toast('Pickup #' + data.id + ' created', 'success');
-    document.getElementById('newOverlay').classList.remove('show');
-    await loadRequests();
+      });
+      toast('Pickup #' + (data?.id ?? '') + ' created', 'success');
+      document.getElementById('newOverlay').classList.remove('show');
+      await loadRequests();
+    } catch (err) {
+      toast('Error: ' + (err.message || String(err)), 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Create Pickup';
+    }
   });
 
   // ---- Other events ----
@@ -1231,25 +1225,21 @@
       toast('Only admins can run sync', 'error');
       return;
     }
-    if (!confirm('Sync today\'s pickup list from Google Doc now? This replaces today\'s rows in Supabase.')) return;
+    if (!confirm('Sync today\'s pickup list from Google Sheet now? This replaces today\'s rows on the server.')) return;
 
     const original = syncBtnEl.textContent;
     syncBtnEl.disabled = true;
     syncBtnEl.textContent = 'Syncing...';
     try {
-      const resp = await fetch('/.netlify/functions/sync-pickups-from-doc', { method: 'POST' });
-      const payload = await resp.json().catch(() => ({}));
-      if (!resp.ok || payload.error) {
-        throw new Error(payload.error || `Sync failed (${resp.status})`);
-      }
+      const payload = await api.syncFromSheet();
       refreshDateMap();
       document.getElementById('dayBeforeLabel').textContent = shortDate(DATE_MAP.dayBefore);
       if (currentDateFilter === 'today') {
         document.getElementById('dateLabel').textContent = formatDate(DATE_MAP.today);
       }
-      let msg = `Synced ${payload.synced ?? 0} for ${payload.request_date || DATE_MAP.today}`;
-      if (payload.timezone) msg += ` (${payload.timezone})`;
-      if (payload.message) msg += '. ' + payload.message;
+      let msg = `Synced ${payload?.synced ?? 0} for ${payload?.request_date || DATE_MAP.today}`;
+      if (payload?.timezone) msg += ` (${payload.timezone})`;
+      if (payload?.message) msg += '. ' + payload.message;
       toast(msg, 'success');
       await loadRequests();
     } catch (err) {

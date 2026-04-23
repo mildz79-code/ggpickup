@@ -1,15 +1,11 @@
 # Netlify config for gg.colorfashiondnf.com
-# Static site — no build step needed, just publish the root.
+# Static site — no build step. The real production target is IIS at
+# gg.colorfashiondnf.com (D:\Data\Web\gg\); Netlify is kept as a mirror.
 
 [build]
   publish = "."
   command = ""
 
-[functions]
-  directory = "netlify/functions"
-  node_bundler = "esbuild"
-
-# Security headers
 [[headers]]
   for = "/*"
   [headers.values]
@@ -17,5 +13,5 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "geolocation=(self), camera=(self)"
-    # Allow Supabase + esm.sh
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.sh https://*.supabase.co; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data: blob: https://*.supabase.co; style-src 'self' 'unsafe-inline'; font-src 'self' data:; media-src 'self' blob:;"
+    # Frontend only talks to same-origin /api/* (proxied to local FastAPI by IIS).
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; media-src 'self' blob:;"

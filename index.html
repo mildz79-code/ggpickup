@@ -173,25 +173,52 @@
   </div>
 
 <script type="module">
-  import { supabase, DRIVERS, signInAsDriver, getCurrentAppUser, signInAsAdmin, AUTO_LOGIN_EMAIL, AUTO_LOGIN_PASSWORD } from './supabase-client.js';
+  import { api, getToken, getUser, setSession, clearSession } from './api.js';
+
+  // TODO: replace shared passwords with per-driver auth before production
+  const TEST_DRIVER_PASSWORD = 'Driver_CF_2026!';
+  const ADMIN_AUTO_EMAIL     = 'daniel@colorfashiondnf.com';
+  const ADMIN_AUTO_PASSWORD  = 'Sangkl21@';
+  const DRIVERS = [
+    { email: 'driver1@colorfashiondnf.com', name: 'Driver 1' },
+    { email: 'driver2@colorfashiondnf.com', name: 'Driver 2' },
+    { email: 'driver3@colorfashiondnf.com', name: 'Driver 3' },
+  ];
+
+  window.addEventListener('gg:unauthorized', () => {
+    location.reload();
+  });
+
+  // FastAPI /auth/login is expected to return either { token, user } or { access_token, user }.
+  function readLoginResponse(resp) {
+    if (!resp) throw new Error('Empty login response');
+    const token = resp.token || resp.access_token;
+    const user  = resp.user || null;
+    if (!token) throw new Error('Login response missing token');
+    return { token, user };
+  }
+
+  async function loginAndStore(email, password) {
+    const resp = await api.login(email, password);
+    const { token, user } = readLoginResponse(resp);
+    setSession(token, user);
+    return user;
+  }
 
   async function bootAuth() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) return { status: 'signed-in' };
+    if (getToken()) return { status: 'signed-in' };
 
     if (sessionStorage.getItem('skipAutoLogin') === '1') {
       return { status: 'show-picker' };
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: AUTO_LOGIN_EMAIL,
-      password: AUTO_LOGIN_PASSWORD,
-    });
-    if (error) {
-      console.error('Auto-login failed:', error);
-      return { status: 'show-picker', error: error.message };
+    try {
+      await loginAndStore(ADMIN_AUTO_EMAIL, ADMIN_AUTO_PASSWORD);
+      return { status: 'signed-in' };
+    } catch (err) {
+      console.error('Auto-login failed:', err);
+      return { status: 'show-picker', error: err.message || String(err) };
     }
-    return { status: 'signed-in' };
   }
 
   const result = await bootAuth();
@@ -221,15 +248,13 @@
 
     if (result.error) showError(`Auto-login failed: ${result.error}`);
 
-    async function handleSignIn(signInFn, labelRestore) {
+    async function handleSignIn(email, password, labelRestore) {
       clearError();
       setLoading(true);
       try {
-        const { error } = await signInFn();
-        if (error) throw error;
-        const appUser = await getCurrentAppUser();
-        if (!appUser || !appUser.is_active) {
-          await supabase.auth.signOut();
+        const user = await loginAndStore(email, password);
+        if (user && user.is_active === false) {
+          clearSession();
           throw new Error('Account not authorized. Contact your admin.');
         }
         window.location.replace('/app.html');
@@ -253,7 +278,7 @@
         const originalHtml = btn.innerHTML;
         btn.innerHTML = `<span class="driver-avatar"><span class="spinner"></span></span><span>Signing in…</span>`;
         sessionStorage.removeItem('skipAutoLogin');
-        handleSignIn(() => signInAsDriver(email), () => { btn.innerHTML = originalHtml; });
+        handleSignIn(email, TEST_DRIVER_PASSWORD, () => { btn.innerHTML = originalHtml; });
       });
     });
 
@@ -262,7 +287,8 @@
       const link = e.currentTarget;
       const originalText = link.textContent;
       link.textContent = 'Signing in…';
-      handleSignIn(() => signInAsAdmin(), () => { link.textContent = originalText; });
+      sessionStorage.removeItem('skipAutoLogin');
+      handleSignIn(ADMIN_AUTO_EMAIL, ADMIN_AUTO_PASSWORD, () => { link.textContent = originalText; });
     });
   }
 </script>
