@@ -1,0 +1,14 @@
+# Force LF in repo for cross-platform tools (Cursor on Mac, Linux servers)
+# Windows checkouts still get CRLF locally via core.autocrlf=true
+* text=auto eol=lf
+
+# Windows-only files keep CRLF
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+*.cmd   text eol=crlf
+
+# Binary
+*.png   binary
+*.jpg   binary
+*.zip   binary
+*.pdf   binary
