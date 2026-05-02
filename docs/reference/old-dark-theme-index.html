@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0f172a">
+<title>GG Pickup — Color Fashion</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🚚%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --card-hover: #293548;
+    --border: #334155;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --accent: #3b82f6;
+    --error: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 22px;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+  }
+  .logo { text-align: center; margin-bottom: 24px; }
+  .logo .emoji { font-size: 48px; display: block; margin-bottom: 8px; }
+  .logo h1 { margin: 0; font-size: 22px; font-weight: 700; }
+  .logo p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+
+  .prompt {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    margin: 4px 0 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .drivers { display: flex; flex-direction: column; gap: 10px; }
+  .driver-btn {
+    width: 100%;
+    padding: 16px;
+    font-size: 16px;
+    font-weight: 600;
+    background: #0f172a;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .driver-btn:hover { background: var(--card-hover); border-color: var(--accent); }
+  .driver-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .driver-avatar {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+  .error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-top: 14px;
+    font-size: 14px;
+    display: none;
+  }
+  .error.show { display: block; }
+  .admin-link {
+    display: block;
+    text-align: center;
+    margin-top: 20px;
+    color: var(--muted);
+    font-size: 12px;
+    text-decoration: none;
+  }
+  .admin-link:hover { color: var(--text); }
+  .footer {
+    text-align: center;
+    margin-top: 14px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .spinner-lg {
+    display: inline-block;
+    width: 32px; height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---- Test-mode banner ---- */
+  .test-banner {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+    padding: 6px 16px;
+    font-size: 12px;
+    text-align: center;
+    font-weight: 500;
+    z-index: 20;
+  }
+</style>
+</head>
+<body>
+  <!-- TODO: remove when shared test password is replaced with per-driver auth -->
+  <div class="test-banner">⚠️ TEST MODE — auto-login enabled. Passwordless. Replace before production.</div>
+
+  <div id="loading">
+    <span class="spinner-lg"></span>
+    <span>Signing in…</span>
+  </div>
+
+  <div class="card" id="picker" style="display:none">
+    <div class="logo">
+      <span class="emoji">🚚</span>
+      <h1>GG Pickup</h1>
+      <p>Greige Goods — Color Fashion</p>
+    </div>
+
+    <div class="prompt">Who's driving today?</div>
+    <div class="drivers" id="drivers"></div>
+
+    <div class="error" id="driverError"></div>
+
+    <a href="#" class="admin-link" id="adminSignInLink">Sign in as admin</a>
+
+    <div class="footer">v2.0 · colorfashiondnf.com</div>
+  </div>
+
+<script type="module">
+  import { supabase, DRIVERS, signInAsDriver, getCurrentAppUser, signInAsAdmin, AUTO_LOGIN_EMAIL, AUTO_LOGIN_PASSWORD } from './supabase-client.js';
+
+  async function bootAuth() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) return { status: 'signed-in' };
+
+    if (sessionStorage.getItem('skipAutoLogin') === '1') {
+      return { status: 'show-picker' };
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: AUTO_LOGIN_EMAIL,
+      password: AUTO_LOGIN_PASSWORD,
+    });
+    if (error) {
+      console.error('Auto-login failed:', error);
+      return { status: 'show-picker', error: error.message };
+    }
+    return { status: 'signed-in' };
+  }
+
+  const result = await bootAuth();
+  if (result.status === 'signed-in') {
+    window.location.replace('/app.html');
+  } else {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('picker').style.display = '';
+
+    const driverError = document.getElementById('driverError');
+    const driversEl = document.getElementById('drivers');
+
+    function showError(msg) {
+      driverError.textContent = msg;
+      driverError.classList.add('show');
+    }
+    function clearError() {
+      driverError.classList.remove('show');
+      driverError.textContent = '';
+    }
+    function setLoading(on) {
+      document.querySelectorAll('.driver-btn').forEach(b => b.disabled = on);
+      const link = document.getElementById('adminSignInLink');
+      link.style.pointerEvents = on ? 'none' : '';
+      link.style.opacity = on ? '0.5' : '';
+    }
+
+    if (result.error) showError(`Auto-login failed: ${result.error}`);
+
+    async function handleSignIn(signInFn, labelRestore) {
+      clearError();
+      setLoading(true);
+      try {
+        const { error } = await signInFn();
+        if (error) throw error;
+        const appUser = await getCurrentAppUser();
+        if (!appUser || !appUser.is_active) {
+          await supabase.auth.signOut();
+          throw new Error('Account not authorized. Contact your admin.');
+        }
+        window.location.replace('/app.html');
+      } catch (err) {
+        showError(err.message || 'Sign in failed.');
+        setLoading(false);
+        if (labelRestore) labelRestore();
+      }
+    }
+
+    driversEl.innerHTML = DRIVERS.map(d => `
+      <button class="driver-btn" data-email="${d.email}">
+        <span class="driver-avatar">🚛</span>
+        <span>${d.name}</span>
+      </button>
+    `).join('');
+
+    driversEl.querySelectorAll('.driver-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const email = btn.dataset.email;
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = `<span class="driver-avatar"><span class="spinner"></span></span><span>Signing in…</span>`;
+        sessionStorage.removeItem('skipAutoLogin');
+        handleSignIn(() => signInAsDriver(email), () => { btn.innerHTML = originalHtml; });
+      });
+    });
+
+    document.getElementById('adminSignInLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      const link = e.currentTarget;
+      const originalText = link.textContent;
+      link.textContent = 'Signing in…';
+      handleSignIn(() => signInAsAdmin(), () => { link.textContent = originalText; });
+    });
+  }
+</script>
+</body>
+</html>
