@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Route Sheets · Color Fashion</title>
+<style>
+  @page { size: letter; margin: 0.5in; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: "Inter", system-ui, sans-serif; color: #111; }
+  .sheet {
+    page-break-after: always;
+    padding: 0.25in 0;
+  }
+  .sheet:last-child { page-break-after: auto; }
+  h1 { font-family: "Fraunces", Georgia, serif; font-size: 24px; margin: 0 0 4px; font-weight: 500; }
+  .sub { color: #666; font-size: 13px; margin-bottom: 20px; }
+  .driver {
+    display: inline-block; padding: 4px 10px; background: #b8391a; color: #fff;
+    border-radius: 3px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid #ddd; text-align: left; font-size: 13px; }
+  th { background: #f6f3ed; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #555; }
+  td.mono { font-family: "JetBrains Mono", monospace; font-size: 12px; }
+  td.seq { font-family: "JetBrains Mono", monospace; width: 36px; color: #888; }
+  td.type { width: 80px; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
+  td.type.pickup   { color: #b8391a; }
+  td.type.delivery { color: #2f7a3b; }
+  .sig { margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  .sig div { border-top: 1px solid #333; padding-top: 4px; font-size: 11px; color: #666; }
+  .no-print { position: fixed; top: 10px; right: 10px; }
+  @media print { .no-print { display: none; } }
+  .empty { padding: 40px; text-align: center; color: #999; font-style: italic; }
+</style>
+</head>
+<body>
+
+<div class="no-print">
+  <button onclick="window.print()" style="padding:8px 16px;background:#b8391a;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:500">Print</button>
+</div>
+
+<div id="sheets"></div>
+
+<script type="module">
+import { shipping } from "./assets/api.js";
+
+const fmt = new Intl.DateTimeFormat(undefined, {
+  weekday: "long", month: "long", day: "numeric", year: "numeric",
+});
+
+(async () => {
+  const root = document.getElementById("sheets");
+  let data;
+  try {
+    const params = new URLSearchParams(location.search);
+    const iso = params.get("date");
+    data = iso ? await shipping.day(iso) : await shipping.today();
+  } catch (err) {
+    root.innerHTML = `<div class="empty">Couldn't load: ${err.message}</div>`;
+    return;
+  }
+
+  const pickups    = Object.fromEntries((data.pickups    || []).map(p => [p.id, p]));
+  const deliveries = Object.fromEntries((data.deliveries || []).map(d => [d.id, d]));
+
+  // Group stops by driver_id (null → "Unassigned")
+  const byDriver = new Map();
+  (data.stops || []).forEach(s => {
+    const key = s.driver_id || "__unassigned__";
+    if (!byDriver.has(key)) byDriver.set(key, { name: s.driver_name || "Unassigned", stops: [] });
+    byDriver.get(key).stops.push(s);
+  });
+
+  if (!byDriver.size) {
+    root.innerHTML = `<div class="empty">No stops scheduled for ${data.schedule_date}.</div>`;
+    return;
+  }
+
+  const dateLabel = fmt.format(new Date((data.schedule_date || new Date().toISOString().slice(0,10)) + "T00:00:00"));
+
+  for (const [_, { name, stops }] of byDriver) {
+    stops.sort((a, b) => a.sequence - b.sequence);
+    const rows = stops.map(s => {
+      const type = s.stop_type;
+      const ref = type === "pickup" ? pickups[s.pickup_request_id] : deliveries[s.delivery_request_id];
+      if (!ref) return "";
+      const label = type === "pickup"
+        ? `${ref.knitter} → ${ref.customer}`
+        : `${ref.customer_code}`;
+      const lot = ref.lot_number || "—";
+      return `<tr>
+        <td class="seq">${String(s.sequence).padStart(2, "0")}</td>
+        <td class="type ${type}">${type}</td>
+        <td>${label}</td>
+        <td class="mono">${lot}</td>
+        <td class="mono">${ref.qty}</td>
+        <td></td>
+      </tr>`;
+    }).join("");
+
+    const sheet = document.createElement("section");
+    sheet.className = "sheet";
+    sheet.innerHTML = `
+      <h1>Route sheet</h1>
+      <div class="sub">${dateLabel} · <span class="driver">${name}</span></div>
+      <table>
+        <thead><tr><th>#</th><th>Type</th><th>Destination</th><th>Lot</th><th>Qty</th><th>Done</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="sig">
+        <div>Driver signature</div>
+        <div>Date / time complete</div>
+      </div>
+    `;
+    root.appendChild(sheet);
+  }
+})();
+</script>
+</body>
+</html>

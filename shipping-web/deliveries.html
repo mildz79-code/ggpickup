@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Deliveries · Shipping Schedule</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  .form-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr) auto;
+    gap: 10px; padding: 16px;
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 8px;
+    margin: 0 28px 20px;
+  }
+  .form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-soft); }
+  .form-grid input {
+    font: inherit; padding: 8px 10px; border: 1px solid var(--rule);
+    border-radius: 4px; background: #fff; color: var(--ink);
+  }
+  .form-grid input:focus { outline: none; border-color: var(--accent); }
+  .form-grid button {
+    align-self: end; padding: 9px 18px; background: var(--accent); color: #fff;
+    border: none; border-radius: 4px; font-weight: 500; cursor: pointer;
+  }
+  .form-grid button:hover { filter: brightness(0.92); }
+
+  .list { margin: 0 28px 28px; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+  .list table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .list th, .list td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--rule); }
+  .list th { background: var(--bg); font-size: 11px; letter-spacing: 0.06em;
+             text-transform: uppercase; color: var(--ink-soft); font-weight: 500; }
+  .list tr:last-child td { border-bottom: none; }
+  .list .mono { font-family: var(--mono); font-size: 13px; }
+  .list .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px;
+    font-family: var(--mono); letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .pill.pending   { background: #fcebd2; color: var(--warn); }
+  .pill.delivered { background: #e0ebe1; color: var(--ok); }
+  .pill.cancelled { background: #eee;    color: var(--ink-soft); }
+  .pill.manual    { background: var(--accent-soft); color: var(--accent); }
+  .pill.dyeserver { background: #dbe5f0; color: #3a5a80; }
+  .empty { padding: 30px; text-align: center; color: var(--ink-soft); font-style: italic; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand"><span class="mark">CF</span><span class="title">Shipping Schedule</span></div>
+  <nav>
+    <a href="index.html">Today</a>
+    <a href="deliveries.html" class="on">Deliveries</a>
+    <a href="print.html" target="_blank">Print</a>
+  </nav>
+  <div class="who"><span id="who-name"></span><button id="sign-out">Sign out</button></div>
+</header>
+
+<section class="day-head">
+  <h1>Deliveries</h1>
+  <div class="counts"><span><strong id="count">0</strong> on record</span></div>
+</section>
+
+<form class="form-grid" id="new-delivery">
+  <label>Date<input type="date" name="request_date" required></label>
+  <label>Customer code<input name="customer_code" maxlength="10" required placeholder="DUC"></label>
+  <label>Lot number<input name="lot_number" placeholder="DUC-8828"></label>
+  <label>Qty<input type="number" name="qty" min="1" value="1" required></label>
+  <button type="submit">Add delivery</button>
+</form>
+
+<section class="list">
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Customer</th>
+        <th>Lot</th>
+        <th>Qty</th>
+        <th>Status</th>
+        <th>Source</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</section>
+
+<script type="module" src="assets/auth.js"></script>
+<script type="module" src="assets/views/deliveries.js"></script>
+</body>
+</html>

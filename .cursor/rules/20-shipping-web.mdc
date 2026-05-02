@@ -1,0 +1,78 @@
+---
+description: Rules for the shipping-web/ frontend (shipping schedule app)
+globs:
+  - "shipping-web/**/*.html"
+  - "shipping-web/**/*.js"
+  - "shipping-web/**/*.css"
+alwaysApply: false
+---
+
+# shipping-web/ — Shipping Schedule frontend rules
+
+Will be served by IIS from `D:\Data\Web\shipping-web\` at `shipping-web.colorfashiondnf.com` once deployed in Phase 3.3.
+
+## Stack — strict constraints
+
+- **Vanilla HTML + CSS + JS only.** No React, no Vue, no build step.
+- **No npm, no bundler, no TypeScript compilation.** Files are edited and deployed as-is via robocopy to `D:\Data\Web\shipping-web\`.
+- **CDN imports are OK** for small utilities (e.g. dayjs via `<script type="module">` from `esm.sh`). Prefer zero dependencies where possible.
+- File layout:
+  ```
+  shipping-web/
+  ├── index.html         # Today's schedule view (drag-drop board)
+  ├── deliveries.html    # Manual delivery entry + list
+  ├── print.html         # Per-driver printable route sheets
+  ├── web.config         # IIS rewrite: /api/* → localhost:8001/* (strips /api)
+  └── assets/
+      ├── app.css
+      ├── api.js         # fetch wrappers
+      ├── auth.js        # session shared with GG Pickup
+      └── views/
+          ├── schedule.js
+          └── deliveries.js
+  ```
+
+## API path conventions
+
+All backend calls **MUST include the `/api/` prefix** (browser-side). IIS strips it before forwarding to FastAPI.
+
+✅ Correct: `fetch("/api/shipping/today")`
+❌ Wrong:   `fetch("/shipping/today")` (won't be proxied)
+❌ Wrong:   `fetch("http://localhost:8001/shipping/today")` (won't work in production)
+
+Always use **relative URLs** so the same code works through IIS in production and via local proxy in dev.
+
+## Auth
+
+- Reuse the JWT issued by GG Pickup's `/api/auth/login`.
+- Storage keys (matched across both apps):
+  - `sessionStorage.cf_token` — bearer token
+  - `sessionStorage.cf_user`  — JSON `{id, role, display_name}`
+- If no token, redirect to `https://gg.colorfashiondnf.com/index.html?next=<this URL>`.
+- On 401 from any API call, clear storage and redirect to login.
+
+## Design
+
+- Match the visual language of GG Pickup Mockup 1: light background, same fonts (Fraunces serif headers, Inter body, JetBrains Mono for codes/IDs), rust accent color (`#b8391a`).
+- Desktop-first (admin uses this on a PC). Must remain usable on tablet in landscape.
+- No heavy animations. Admin tool, not marketing.
+- CSS Grid for the schedule board. Native HTML5 drag-and-drop for stop reordering — no libraries.
+
+## Data shape (from `GET /api/shipping/today`)
+
+```json
+{
+  "schedule_date": "2026-04-23",
+  "pickups":    [{ "id": 1, "knitter": "BONATEX", "customer": "JCT", "lot_number": "T-16023", "qty": 1, "status": "Pending" }],
+  "deliveries": [{ "id": 1, "customer_code": "DUC", "lot_number": "DUC-8828", "qty": 5, "status": "Pending", "source": "manual" }],
+  "stops":      [{ "id": 1, "sequence": 1, "stop_type": "pickup",   "pickup_request_id":   1, "driver_id": "..." },
+                 { "id": 2, "sequence": 2, "stop_type": "delivery", "delivery_request_id": 1, "driver_id": "..." }]
+}
+```
+
+## Do not
+
+- Do not import from npm or add a `package.json`.
+- Do not call Supabase. All data goes through `/api/*`.
+- Do not write Phase 4 dyeserver code in the frontend. The frontend hits `/api/sync/dyeserver` — FastAPI does the work.
+- Do not hardcode `http://localhost:8001` anywhere — it breaks in production.

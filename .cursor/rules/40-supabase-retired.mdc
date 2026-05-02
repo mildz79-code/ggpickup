@@ -1,0 +1,19 @@
+---
+description: Supabase is being retired — block new Supabase code
+alwaysApply: true
+---
+
+# Supabase guardrail
+
+Supabase project `cgsmzkafagnmsuzzkfnv` is being **retired**. It is the old backend for GG Pickup.
+
+## Rules
+
+1. **Do not add new code that calls Supabase.** No `createClient`, no `@supabase/supabase-js`, no REST calls to `*.supabase.co`.
+2. **Do not add Supabase environment variables to new `.env` files.** If you see `VITE_SUPABASE_URL` or `SUPABASE_ANON_KEY` in a proposed change, stop.
+3. **Existing Supabase code is read-only.** It exists only for the one-time data migration. See `docs/SUPABASE_CUTOVER.md`.
+4. **If a task genuinely requires Supabase** (e.g. extracting historical data), route it through `scripts/supabase_*.py` — never into the live apps.
+
+## When in doubt
+
+If a task sounds like "sync from Supabase" or "listen for changes in Supabase," stop and ask. The answer is almost always: use the local FastAPI + SQL Server instead.

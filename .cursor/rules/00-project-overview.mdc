@@ -1,0 +1,60 @@
+---
+description: Project overview and non-negotiable architectural facts for Color Fashion ggpickup monorepo
+alwaysApply: true
+---
+
+# ggpickup — Color Fashion monorepo (always apply)
+
+You are assisting Daniel on the Color Fashion operations apps. Read this before any change.
+
+## What lives here
+
+Two frontends + one backend, deployed entirely on local Windows infrastructure (one box, WEBSERVER):
+
+- **GG Pickup** — driver + admin app at `gg.colorfashiondnf.com`. Live in production. Serves `D:\Data\Web\gg\` on IIS, default doc `index.html`.
+- **Shipping Schedule** — admin app at `shipping-web.colorfashiondnf.com`. **Phase 3, not yet deployed.** Will serve `D:\Data\Web\shipping-web\`.
+- **ggapi** — FastAPI backend at `C:\ai\ggapi\`, runs on `localhost:8001`, **serves both frontends**. Live in production for GG Pickup's needs.
+
+## Infrastructure facts (do not contradict)
+
+| What | Where |
+|---|---|
+| Web server | WEBSERVER (192.168.1.121), public 76.83.45.123 |
+| **Database** | **SQL Server 2008 R2 on `localhost`** (same box as FastAPI, NOT on idserver) |
+| DB name | `ggpickup`, SQL auth as `sa` |
+| Photo storage | `C:\ai\ggapi\photos\` on WEBSERVER, mounted by FastAPI as `/photos/*` |
+| Reverse proxy | IIS URL Rewrite + ARR: `^api/(.*)` → `http://localhost:8001/{R:1}` (**strips `/api/`**) |
+| API auto-start | **PENDING** — Task Scheduler not yet wired |
+| SSL | win-acme + Let's Encrypt, renews 2026-06-16 |
+
+## Routing rule (the one most likely to trip you up)
+
+The **browser** calls `/api/auth/login`.
+**IIS** strips the prefix and forwards to `localhost:8001/auth/login`.
+**FastAPI** routes are mounted **without** the `/api/` prefix.
+
+So:
+- ✅ `@router.post("/login")` under `APIRouter(prefix="/auth")` → matches `/auth/login`
+- ❌ `@router.post("/api/auth/login")` → wrong, browser would have to call `/api/api/auth/login`
+- ✅ Frontend: `fetch("/api/auth/login")`
+- ❌ Frontend: `fetch("/auth/login")` (not proxied through IIS)
+- ❌ Frontend: `fetch("http://localhost:8001/...")` (breaks in production)
+
+## Non-negotiable rules
+
+1. **Supabase is retired.** Project `cgsmzkafagnmsuzzkfnv` is dark. Never add features that depend on it. Existing Supabase code is for reference / one-time migration only.
+2. **SQL Server 2008 R2.** Write T-SQL that works on 2008 R2. No `OFFSET/FETCH`, no `IIF`, no `STRING_SPLIT`, no `TRY_CAST`. See `30-sql-server-2008.mdc`.
+3. **No build steps on the frontend.** Plain HTML + CSS + vanilla JS. IIS serves files directly. No React, no Vite, no bundlers, no TypeScript.
+4. **One API, two frontends.** Never create a separate backend for `shipping-web/`. Add routes to `ggapi/` under `/shipping/*` (FastAPI side), called as `/api/shipping/*` from the browser.
+5. **Do not connect to DYESERVER (192.168.1.36) until Phase 4.** Before that, `delivery_requests` are manually entered.
+6. **Read `docs/PHASES.md` before proposing work.** Don't start Phase N+1 before Phase N is marked complete.
+7. **Ask before destructive SQL.** DROP, TRUNCATE, DELETE without WHERE, schema changes — all require explicit confirmation.
+8. **`docs/PRODUCTION_INVENTORY.md` is the source of truth** when reality and other docs disagree.
+9. **Ready-to-paste over explanations.** Daniel prefers concise blocks he can paste into Claude Code, SSMS, or PowerShell.
+
+## How to answer
+
+- For non-trivial changes, start the response with: `Phase: <N>  |  File: <path>  |  Risk: <none|low|med|high>`
+- If a request spans multiple phases, stop and ask which phase to do first.
+- If a request requires Supabase, stop and point to `docs/SUPABASE_CUTOVER.md`.
+- If a request requires DYESERVER and we're not in Phase 4, stop and propose a mock.

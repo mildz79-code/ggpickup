@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shipping Schedule · Color Fashion</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <span class="mark">CF</span>
+    <span class="title">Shipping Schedule</span>
+  </div>
+  <nav>
+    <a href="index.html" class="on">Today</a>
+    <a href="deliveries.html">Deliveries</a>
+    <a href="print.html" target="_blank">Print</a>
+  </nav>
+  <div class="who"><span id="who-name"></span><button id="sign-out">Sign out</button></div>
+</header>
+
+<section class="day-head">
+  <h1 id="day-title">—</h1>
+  <div class="counts">
+    <span><strong id="count-pickups">0</strong> pickups</span>
+    <span><strong id="count-deliveries">0</strong> deliveries</span>
+    <span><strong id="count-stops">0</strong> stops scheduled</span>
+  </div>
+</section>
+
+<main class="board">
+  <aside class="pool" aria-label="Unscheduled requests">
+    <h2>Unscheduled</h2>
+    <div class="pool-section">
+      <h3>Pickups</h3>
+      <ul id="pool-pickups" class="drag-list"></ul>
+    </div>
+    <div class="pool-section">
+      <h3>Deliveries</h3>
+      <ul id="pool-deliveries" class="drag-list"></ul>
+    </div>
+  </aside>
+
+  <section class="plan" aria-label="Today's route">
+    <h2>Route</h2>
+    <ol id="route" class="drag-list ordered"></ol>
+  </section>
+</main>
+
+<script type="module" src="assets/auth.js"></script>
+<script type="module" src="assets/views/schedule.js"></script>
+</body>
+</html>

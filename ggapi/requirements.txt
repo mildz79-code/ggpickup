@@ -1,0 +1,27 @@
+# Pinned to roughly what's installed on WEBSERVER. Versions are minimums;
+# exact installed versions are documented in docs/PRODUCTION_INVENTORY.md.
+
+# core
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8
+python-multipart>=0.0.9
+python-dotenv>=1.0
+
+# database
+pyodbc>=5.1
+
+# auth
+PyJWT>=2.9
+bcrypt>=4.2
+
+# google sheets sync
+google-auth>=2.34
+google-auth-httplib2>=0.2
+google-api-python-client>=2.140
+
+# OCR (Tesseract is system-installed; these are the wrappers)
+pytesseract>=0.3
+pillow>=10.4
+opencv-python>=4.10
+numpy>=1.26

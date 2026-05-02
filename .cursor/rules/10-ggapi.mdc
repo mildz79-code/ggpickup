@@ -1,0 +1,86 @@
+---
+description: Rules for the FastAPI backend in ggapi/
+globs:
+  - "ggapi/**/*.py"
+alwaysApply: false
+---
+
+# ggapi/ — FastAPI backend rules
+
+This code mirrors `C:\ai\ggapi\` on WEBSERVER. The production install is the source of truth for what's actually running; this repo is the source of truth for what *should* be running. Reconcile carefully.
+
+## Stack
+
+- Python 3.11+ on WEBSERVER (interpreter at `C:\ai\python\python.exe`)
+- FastAPI + Uvicorn (port 8001, localhost-only)
+- `pyodbc` for SQL Server 2008 R2 on **localhost** (driver: `{ODBC Driver 17 for SQL Server}`)
+- `PyJWT` (not python-jose) — production uses PyJWT, match it
+- `bcrypt` for password hashing
+- `python-multipart` for file uploads
+- `google-auth` + `google-api-python-client` for Sheets sync
+- `pytesseract` + `Pillow` + `opencv-python` for OCR
+
+Dependencies live in `ggapi/requirements.txt`. Never import a package not listed there without updating the file.
+
+## CRITICAL: routing and IIS prefix-stripping
+
+IIS reverse-proxies `/api/*` from the browser to FastAPI on `localhost:8001`, **stripping the `/api/` prefix**. So:
+
+- Browser request: `POST /api/auth/login`
+- IIS forwards as: `POST /auth/login`
+- FastAPI route: `@router.post("/login")` under `router = APIRouter(prefix="/auth")`
+
+**Never add `/api/` to FastAPI routes.** That's IIS's job. If you mount a route at `/api/foo`, the browser would have to call `/api/api/foo`, which is wrong.
+
+## Route organization
+
+```
+ggapi/
+├── main.py                    # app, CORS, mount routers
+├── db.py                      # pyodbc connection (localhost, sa)
+├── deps.py                    # JWT + bcrypt helpers, get_current_user, require_role
+├── routers/
+│   ├── auth.py                # /auth/login, /auth/me
+│   ├── pickup_requests.py     # /pickup-requests/* (Phases 1, 2)
+│   ├── users.py               # /users (admin)
+│   ├── locations.py           # /locations (read-only)
+│   ├── sync.py                # /sync (Google Sheets, exists in prod)
+│   ├── scan.py                # /scan (Tesseract OCR, exists in prod)
+│   └── shipping.py            # /shipping/* (Phase 3)
+└── sql/                       # Numbered migrations applied via SSMS
+```
+
+## SQL conventions (SQL Server 2008 R2)
+
+The DB is on `localhost` (same machine as FastAPI). It is 14+ years old. See `.cursor/rules/30-sql-server-2008.mdc` for forbidden T-SQL features.
+
+- Use parameterized queries always: `cursor.execute("... WHERE id = ?", (id,))`. Never f-string SQL.
+- All tables in `dbo` schema, snake_case names.
+- Booleans: `BIT` (0/1).
+- UUIDs: `UNIQUEIDENTIFIER` with `NEWID()`.
+- Timestamps: `DATETIME2(3)` for new tables; existing `DATETIME` columns stay.
+- Paging: no `OFFSET/FETCH` — use `ROW_NUMBER() OVER (...)` in a CTE.
+
+## Auth model
+
+- Every route except `/health`, `/auth/login` requires a valid JWT.
+- JWT payload: `{sub: user_id_string, role: 'admin'|'user'|'driver', name: display_name, exp: ...}`.
+- Drivers see `Pending` requests + their own `Picked Up` rows (server-side filter in queries).
+- Admins see everything.
+- `require_role("admin")` dependency guards admin-only routes.
+- Never return `password_hash` in responses.
+
+## Error handling
+
+- Use `HTTPException(status_code=..., detail=...)` with clear messages.
+- 401 = not logged in / token invalid. 403 = wrong role. 404 = not found.
+- Don't leak DB errors to clients; log full context server-side, return generic 500.
+
+## Testing locally
+
+```powershell
+cd C:\ai\ggapi
+C:\ai\python\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8001 --reload
+```
+
+Swagger UI at `http://localhost:8001/docs`.

@@ -1,0 +1,41 @@
+---
+description: SQL Server 2008 R2 compatibility rules
+globs:
+  - "**/*.sql"
+alwaysApply: false
+---
+
+# SQL Server 2008 R2 compatibility
+
+The database engine is **SQL Server 2008 R2** on IDSERVER. It is 14+ years old. Many modern T-SQL features do not exist.
+
+## Forbidden (added in 2012+)
+
+- `OFFSET n ROWS FETCH NEXT m ROWS ONLY` — use `ROW_NUMBER()` in a CTE.
+- `IIF(cond, a, b)` — use `CASE WHEN cond THEN a ELSE b END`.
+- `STRING_SPLIT(...)` — roll your own with a recursive CTE or XML trick.
+- `TRY_CAST` / `TRY_CONVERT` — wrap in a TRY/CATCH block instead.
+- `CONCAT_WS`, `STRING_AGG` — concatenate manually.
+- `OPENJSON`, `FOR JSON` — serialize in the application layer.
+- `THROW` without a number argument — use `RAISERROR`.
+- Sequences (`CREATE SEQUENCE`) — use `IDENTITY` columns.
+
+## Allowed and preferred
+
+- `IDENTITY(1,1)` for auto-increment PKs.
+- `UNIQUEIDENTIFIER DEFAULT NEWID()` for UUIDs.
+- `DATETIME2(3)` for timestamps where millisecond precision is enough.
+- Common Table Expressions (`WITH cte AS (...)`) — fully supported.
+- `MERGE` — supported (but parameterize carefully).
+- `ROW_NUMBER() OVER (ORDER BY ...)` for paging.
+
+## Style
+
+- Tables in `dbo` schema, snake_case names (`greige_pickup_requests`), matching Python/JS conventions.
+- Every table has `created_at DATETIME2 DEFAULT SYSUTCDATETIME()`.
+- Foreign keys named `fk_<table>_<column>`.
+- Indexes named `ix_<table>_<column>`.
+
+## Deployment
+
+Run all DDL through SSMS on IDSERVER, connected to the `ggpickup` database. Save every schema change as a numbered file in `ggapi/sql/` (e.g. `003_add_delivery_requests.sql`) so the schema is replayable from scratch.
