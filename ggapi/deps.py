@@ -1,11 +1,17 @@
 """
 deps.py — FastAPI dependencies + auth helpers.
 
-Production uses bcrypt for password hashing and PyJWT for tokens.
-This module mirrors that.
+Mirrors production C:\\ai\\ggapi\\main.py auth helpers exactly:
+    - JWT payload: {sub, role, full_name, exp}
+    - get_current_user returns the raw decoded payload
+      (so routes use user["sub"], user["role"], user["full_name"])
+    - require_role("admin") gates admin-only routes
+
+Production hardcodes the JWT secret in main.py; this repo loads it from
+ggapi/.env per the rule "no committed secrets".
 """
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import bcrypt
 import jwt
@@ -39,12 +45,13 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # ---------- tokens ----------
 
-def issue_token(user_id: str, role: str, name: str = "") -> str:
+def issue_token(user_id: str, role: str, full_name: str = "") -> str:
+    """Mirrors prod make_token(): payload = {sub, role, full_name, exp}."""
     payload = {
-        "sub":  user_id,
-        "role": role,
-        "name": name,
-        "exp":  datetime.now(timezone.utc) + timedelta(hours=_JWT_EXPIRE_HOURS),
+        "sub":       user_id,
+        "role":      role,
+        "full_name": full_name,
+        "exp":       datetime.utcnow() + timedelta(hours=_JWT_EXPIRE_HOURS),
     }
     return jwt.encode(payload, _JWT_SECRET, algorithm=_JWT_ALGORITHM)
 
@@ -52,29 +59,31 @@ def issue_token(user_id: str, role: str, name: str = "") -> str:
 # ---------- request-scoped helpers ----------
 
 def get_current_user(creds: HTTPAuthorizationCredentials | None = Depends(bearer)):
+    """
+    Returns the raw JWT payload dict so routes can do user["sub"], user["role"],
+    user["full_name"] — matching the prod main.py contract.
+    """
     if not creds:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
     try:
-        payload = jwt.decode(creds.credentials, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
+        return jwt.decode(creds.credentials, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token")
 
-    if not payload.get("sub") or not payload.get("role"):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Malformed token")
 
-    return {
-        "id":           payload["sub"],
-        "role":         payload["role"],
-        "display_name": payload.get("name", ""),
-    }
+def admin_only(user: dict = Depends(get_current_user)) -> dict:
+    """Mirrors prod admin_only(): 403 if role != 'admin'."""
+    if user.get("role") != "admin":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin only")
+    return user
 
 
 def require_role(required: str):
     """Usage:  @router.get(..., dependencies=[Depends(require_role("admin"))])"""
     def _check(user=Depends(get_current_user)):
-        if user["role"] != required:
+        if user.get("role") != required:
             raise HTTPException(status.HTTP_403_FORBIDDEN, f"Requires role={required}")
         return user
     return _check
