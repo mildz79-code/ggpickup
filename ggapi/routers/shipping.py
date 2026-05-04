@@ -86,11 +86,10 @@ def _schedule_day_id_for_date(cur, schedule_date) -> int | None:
 
 
 def _stops_sql_and_params(schedule_day_id: int | None, user: dict):
-    """Admins see all stops for the day; drivers only stops assigned to them."""
+    """admin and user see all stops; driver only stops where driver_id = JWT.sub."""
     if schedule_day_id is None:
         return None, ()
-    role = user.get("role")
-    if role == "admin":
+    if user.get("role") != "driver":
         sql = (
             f"SELECT {STOP_COLUMNS} FROM schedule_stops "
             "WHERE schedule_day_id = ? ORDER BY sequence"
@@ -399,8 +398,24 @@ def reorder_stops(body: list, user: dict = Depends(admin_only)):
             )
         schedule_day_id = day_ids[0]
 
+        cur.execute(
+            "SELECT id FROM schedule_stops WHERE schedule_day_id = ?",
+            schedule_day_id,
+        )
+        ids_for_day = {int(r[0]) for r in cur.fetchall()}
+        payload_ids = set(stop_ids)
+        missing_required = sorted(ids_for_day - payload_ids)
+        if missing_required:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "reorder must include all stops for this schedule_day; "
+                    f"missing ids: {missing_required}"
+                ),
+            )
+
         seq_by_stop = dict(pairs)
-        n = len(pairs)
+        n = len(ids_for_day)
         expected = set(range(1, n + 1))
         got = set(seq_by_stop.values())
         if got != expected:
