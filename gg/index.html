@@ -1,0 +1,558 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#f8f9fa">
+<title>GG Pickup</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🚚%3C/text%3E%3C/svg%3E">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f8f9fa; color: #1a1a2e; -webkit-tap-highlight-color: transparent; }
+
+  .topbar { background: #fff; border-bottom: 1px solid #e0e0e0; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .topbar-left { display: flex; align-items: center; gap: 10px; }
+  .topbar-left h1 { font-size: 15px; font-weight: 700; color: #1a1a2e; white-space: nowrap; }
+  .brand-chip { display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg,#eff6ff,#eef2ff); color: #1e3a8a; border: 1px solid #c7d2fe; border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .brand-chip .dot { width: 8px; height: 8px; border-radius: 999px; background: #2563eb; }
+  .date-badge { background: #f0f0f5; padding: 3px 9px; border-radius: 5px; font-size: 11px; font-weight: 600; color: #555; white-space: nowrap; }
+  .topbar-right { display: flex; align-items: center; gap: 6px; }
+  .btn { padding: 6px 12px; border-radius: 5px; font-size: 12px; font-weight: 600; border: none; cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; transition: background 0.15s; }
+  .btn-primary { background: #2563eb; color: #fff; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-secondary { background: #f0f0f5; color: #444; border: 1px solid #d0d0d8; }
+  .btn-secondary:hover { background: #e4e4ec; }
+  .btn-icon { background: none; border: none; cursor: pointer; font-size: 17px; color: #666; padding: 5px 7px; border-radius: 5px; }
+  .btn-icon:hover { background: #f0f0f5; }
+
+  .summary { display: flex; gap: 14px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e8e8ee; font-size: 12px; color: #666; flex-wrap: wrap; }
+  .summary strong { color: #1a1a2e; font-size: 13px; }
+  .list-hero { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; background: linear-gradient(90deg,#eff6ff,#eef2ff); border-bottom: 1px solid #dbeafe; }
+  .list-hero .title { font-size: 12px; color: #1e3a8a; font-weight: 700; text-transform: uppercase; }
+  .list-hero .sub { font-size: 11px; color: #334155; margin-top: 2px; }
+  .logo-mini { font-size: 20px; }
+
+  .filters { display: flex; gap: 3px; padding: 8px 16px; background: #fff; border-bottom: 2px solid #e0e0e0; overflow-x: auto; }
+  .filter-tab { padding: 5px 11px; border-radius: 5px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid transparent; color: #666; background: transparent; white-space: nowrap; transition: all 0.15s; }
+  .filter-tab:hover { background: #f5f5fa; }
+  .filter-tab.active { background: #eef2ff; color: #2563eb; border-color: #c7d2fe; }
+  .filter-tab .count { background: #e5e7eb; padding: 1px 5px; border-radius: 8px; font-size: 10px; margin-left: 3px; }
+  .filter-tab.active .count { background: #c7d2fe; color: #2563eb; }
+
+  .week-bar { display: flex; gap: 3px; padding: 6px 16px; background: #fafbfd; border-bottom: 2px solid #e0e0e0; overflow-x: auto; }
+  .week-tab { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid transparent; color: #777; background: transparent; white-space: nowrap; }
+  .week-tab:hover { background: #eef0f5; }
+  .week-tab.active { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
+
+  .day-header td { background: #f0f2f8; padding: 6px 10px; font-size: 11px; font-weight: 700; color: #444; text-transform: uppercase; border-bottom: 2px solid #d0d5e0; }
+  .day-header .day-count { font-weight: 500; color: #888; text-transform: none; margin-left: 8px; }
+
+  .table-wrap { padding: 8px 16px 80px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; overflow: hidden; font-size: 13px; }
+  thead th { background: #f7f8fa; padding: 7px 10px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #666; border-bottom: 2px solid #e0e0e0; white-space: nowrap; position: sticky; top: 43px; z-index: 5; }
+  tbody td { padding: 7px 10px; border-bottom: 1px solid #f0f0f4; vertical-align: middle; }
+  tbody tr:hover { background: #fafbff; }
+  tbody tr.expanded { background: #f5f7ff; }
+  .knitter-cell { font-weight: 600; color: #1a1a2e; }
+  .customer-cell { color: #555; }
+  .qty-cell { text-align: center; font-weight: 600; }
+  .lot-cell { font-family: Consolas, monospace; font-size: 11px; color: #555; }
+  .status { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+  .status-Pending { background: #fef3c7; color: #92400e; }
+  .status-PickedUp { background: #d1fae5; color: #065f46; }
+  .status-Cancelled { background: #fee2e2; color: #991b1b; }
+  .expand-toggle { background: none; border: none; cursor: pointer; font-size: 14px; color: #888; padding: 2px 4px; border-radius: 3px; }
+  .expand-toggle.open { transform: rotate(90deg); color: #2563eb; }
+  .sub-row td { background: #fafbfd; padding: 5px 10px 5px 36px; font-size: 12px; border-bottom: 1px solid #f0f0f4; }
+  .sub-row:hover td { background: #f0f3ff; }
+  tfoot td { padding: 8px 10px; font-weight: 700; background: #f7f8fa; border-top: 2px solid #e0e0e0; font-size: 12px; }
+  .row-action { opacity: 0; transition: opacity 0.1s; }
+  tr:hover .row-action { opacity: 1; }
+  .pick-btn { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #166534; cursor: pointer; }
+  .pick-btn:hover { background: #dcfce7; }
+
+  /* Login */
+  #loginScreen { display: none; position: fixed; inset: 0; background: linear-gradient(135deg,#eff6ff,#eef2ff); z-index: 200; justify-content: center; align-items: center; }
+  #loginScreen.show { display: flex; }
+  .login-box { background: #fff; border-radius: 16px; padding: 32px 28px; width: 90%; max-width: 360px; box-shadow: 0 20px 60px rgba(0,0,0,0.12); text-align: center; }
+  .login-box h2 { font-size: 20px; font-weight: 700; color: #1a1a2e; margin-bottom: 6px; }
+  .login-box p { font-size: 13px; color: #666; margin-bottom: 24px; }
+  .login-box input { width: 100%; padding: 10px 12px; border: 1px solid #d0d0d8; border-radius: 8px; font-size: 14px; margin-bottom: 10px; outline: none; font-family: inherit; }
+  .login-box input:focus { border-color: #2563eb; }
+  .btn-login { width: 100%; padding: 11px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-login:hover { background: #1d4ed8; }
+  .login-error { color: #dc2626; font-size: 12px; margin-top: 8px; min-height: 18px; }
+
+  /* Modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; justify-content: center; align-items: center; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: #fff; border-radius: 10px; width: 90%; max-width: 440px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+  .modal-head { padding: 14px 18px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; }
+  .modal-head h2 { font-size: 15px; font-weight: 700; }
+  .modal-close { background: none; border: none; font-size: 20px; color: #999; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+  .modal-close:hover { background: #f0f0f0; }
+  .modal-body { padding: 16px 18px; }
+  .form-row { margin-bottom: 12px; }
+  .form-row label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; color: #666; margin-bottom: 4px; }
+  .form-row input, .form-row textarea { width: 100%; padding: 8px 10px; border: 1px solid #d0d0d8; border-radius: 5px; font-size: 14px; color: #1a1a2e; outline: none; font-family: inherit; background: #fafafa; }
+  .form-row input:focus, .form-row textarea:focus { border-color: #2563eb; background: #fff; }
+  .form-row textarea { min-height: 60px; resize: vertical; }
+  .modal-actions { padding: 12px 18px; border-top: 1px solid #eee; display: flex; gap: 8px; justify-content: flex-end; }
+  .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f2f2f6; font-size: 13px; }
+  .detail-row .dl { color: #888; font-size: 12px; }
+  .detail-row .dv { font-weight: 500; text-align: right; max-width: 60%; word-break: break-word; }
+  .detail-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+  .detail-actions .btn { justify-content: center; padding: 10px; font-size: 13px; }
+  .btn-success { background: #16a34a; color: #fff; }
+  .btn-success:hover { background: #15803d; }
+  .btn-danger { background: #dc2626; color: #fff; }
+  .btn-danger:hover { background: #b91c1c; }
+  .btn-outline-gray { background: #fff; color: #555; border: 1px solid #d0d0d8; }
+
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1a1a2e; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 500; z-index: 100; opacity: 0; transition: opacity 0.2s; pointer-events: none; max-width: 90%; text-align: center; }
+  .toast.show { opacity: 1; }
+  .toast.error { background: #dc2626; }
+  .toast.success { background: #16a34a; }
+  .loading { text-align: center; padding: 40px; color: #888; font-size: 13px; }
+  .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid #ddd; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .empty { text-align: center; padding: 48px 20px; color: #999; font-size: 13px; }
+  .empty .emoji { font-size: 36px; display: block; margin-bottom: 8px; opacity: 0.5; }
+
+  @media (max-width: 600px) {
+    .topbar { padding: 8px 12px; }
+    .table-wrap { padding: 6px 8px 80px; }
+    thead th, tbody td { padding: 6px 6px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="loginScreen" class="show">
+  <div class="login-box">
+    <div style="font-size:40px;margin-bottom:12px">🚚</div>
+    <h2>GG Pickup</h2>
+    <p>Color Fashion · Greige Goods</p>
+    <input type="email" id="loginEmail" placeholder="Email address" autocomplete="email">
+    <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
+    <button class="btn-login" id="loginBtn">Sign In</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="appShell" style="display:none">
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1>🚚 GG Pickup</h1>
+      <span class="brand-chip"><span class="dot"></span>Pickup List</span>
+      <span class="date-badge" id="dateLabel"></span>
+    </div>
+    <div class="topbar-right">
+      <button class="btn btn-primary" id="newBtn" style="display:none">+ New Pickup</button>
+      <button class="btn-icon" id="refreshBtn" title="Refresh">↻</button>
+      <button class="btn-icon" id="logoutBtn" title="Sign out">⎋</button>
+    </div>
+  </div>
+
+  <div class="list-hero">
+    <div>
+      <div class="title">Color Fashion · Greige Goods</div>
+      <div class="sub">Live dispatch view for pickup coordination</div>
+    </div>
+    <div class="logo-mini">🧵</div>
+  </div>
+
+  <div class="summary" id="summaryBar"></div>
+
+  <div class="filters">
+    <div class="filter-tab active" data-filter="today" data-date-tab="true">Today <span class="count" id="countToday">0</span></div>
+    <div class="filter-tab" data-filter="yesterday" data-date-tab="true">Yesterday <span class="count" id="countYesterday">0</span></div>
+    <div class="filter-tab" data-filter="dayBefore" data-date-tab="true"><span id="dayBeforeLabel"></span> <span class="count" id="countDayBefore">0</span></div>
+    <div class="filter-tab" data-filter="Pending">Pending <span class="count" id="countPending">0</span></div>
+    <div class="filter-tab" data-filter="Picked Up">Picked Up <span class="count" id="countDone">0</span></div>
+    <div class="filter-tab" data-filter="all">All <span class="count" id="countAll">0</span></div>
+  </div>
+
+  <div class="week-bar" id="weekBar" style="display:none"></div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:24px"></th>
+          <th>Knitter</th>
+          <th>Customer</th>
+          <th style="width:44px;text-align:center">Qty</th>
+          <th>Lot Number</th>
+          <th style="width:76px">Status</th>
+          <th style="width:60px"></th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr><td colspan="7"><div class="loading"><span class="spinner"></span>Loading…</div></td></tr>
+      </tbody>
+      <tfoot id="tableFoot" style="display:none">
+        <tr><td></td><td>TOTAL LOTS</td><td></td><td style="text-align:center" id="totalQty">0</td><td></td><td></td><td></td></tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detailOverlay">
+  <div class="modal">
+    <div class="modal-head"><h2 id="detailTitle">Pickup Details</h2><button class="modal-close" id="closeDetail">&times;</button></div>
+    <div class="modal-body" id="detailBody"></div>
+  </div>
+</div>
+
+<!-- New Pickup Modal -->
+<div class="modal-overlay" id="newOverlay">
+  <div class="modal">
+    <div class="modal-head"><h2>New Pickup Request</h2><button class="modal-close" id="closeNew">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-row"><label>Knitter *</label><input id="f_knitter" placeholder="e.g. BONATEX"></div>
+      <div class="form-row"><label>Customer</label><input id="f_customer" placeholder="e.g. DUC"></div>
+      <div class="form-row"><label>Lot # (optional)</label><input id="f_lot" placeholder="e.g. JCC-10176"></div>
+      <div class="form-row"><label>Qty (lots)</label><input id="f_qty" type="number" value="1" min="0"></div>
+      <div class="form-row"><label>Notes</label><textarea id="f_notes" placeholder="Optional notes"></textarea></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="cancelNewBtn">Cancel</button>
+      <button class="btn btn-primary" id="submitNewBtn">Create Pickup</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toastEl"></div>
+
+<script>
+  // ── CONFIG ──────────────────────────────────────────────────────────────────
+  const API_URL = 'https://gg.colorfashiondnf.com/api';
+  // After IIS proxy is set up, change to: 'http://gg.colorfashiondnf.com/api'
+
+  // ── AUTH ────────────────────────────────────────────────────────────────────
+  let token    = localStorage.getItem('gg_token');
+  let appUser  = JSON.parse(localStorage.getItem('gg_user') || 'null');
+
+  async function api(method, path, body) {
+    const opts = { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) } };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(API_URL + path, opts);
+    if (res.status === 401) { doLogout(); throw new Error('Session expired'); }
+    return res;
+  }
+
+  function doLogout() {
+    localStorage.removeItem('gg_token');
+    localStorage.removeItem('gg_user');
+    token = null; appUser = null;
+    document.getElementById('appShell').style.display = 'none';
+    document.getElementById('loginScreen').classList.add('show');
+  }
+
+  // ── LOGIN ───────────────────────────────────────────────────────────────────
+  document.getElementById('loginBtn').addEventListener('click', doLogin);
+  document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+  async function doLogin() {
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const errEl = document.getElementById('loginError');
+    errEl.textContent = '';
+    if (!email || !password) { errEl.textContent = 'Email and password required'; return; }
+    const btn = document.getElementById('loginBtn');
+    btn.textContent = 'Signing in…'; btn.disabled = true;
+    try {
+      const res = await fetch(API_URL + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+      const data = await res.json();
+      if (!res.ok) { errEl.textContent = data.detail || 'Login failed'; return; }
+      token = data.access_token;
+      appUser = data.user;
+      localStorage.setItem('gg_token', token);
+      localStorage.setItem('gg_user', JSON.stringify(appUser));
+      document.getElementById('loginScreen').classList.remove('show');
+      document.getElementById('appShell').style.display = '';
+      initApp();
+    } catch(e) {
+      errEl.textContent = 'Cannot reach server. Is the API running?';
+    } finally {
+      btn.textContent = 'Sign In'; btn.disabled = false;
+    }
+  }
+
+  // ── HELPERS ─────────────────────────────────────────────────────────────────
+  function todayISO() {
+    const f = new Intl.DateTimeFormat('en-CA', { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, year:'numeric', month:'2-digit', day:'2-digit' });
+    const p = f.formatToParts(new Date());
+    return p.find(x=>x.type==='year').value+'-'+p.find(x=>x.type==='month').value+'-'+p.find(x=>x.type==='day').value;
+  }
+  function addDays(iso, n) {
+    const [y,m,d] = iso.split('-').map(Number);
+    const t = new Date(Date.UTC(y,m-1,d+n));
+    return t.getUTCFullYear()+'-'+String(t.getUTCMonth()+1).padStart(2,'0')+'-'+String(t.getUTCDate()).padStart(2,'0');
+  }
+  function formatDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso+'T00:00:00');
+    return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()]+', '+['January','February','March','April','May','June','July','August','September','October','November','December'][d.getMonth()]+' '+d.getDate()+', '+d.getFullYear();
+  }
+  function shortDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso+'T00:00:00');
+    return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' '+d.getDate();
+  }
+  function toISO(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function esc(s) { if(s==null)return''; return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+  let toastTimer;
+  function toast(msg,type) { const el=document.getElementById('toastEl'); el.textContent=msg; el.className='toast show'+(type?' '+type:''); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),2600); }
+
+  // ── STATE ───────────────────────────────────────────────────────────────────
+  let requests=[], currentFilter='today', currentDateFilter='today', currentMode='daily', currentWeekStart=null, expandedKnitters=new Set(), DATE_MAP={};
+  function refreshDateMap() { const t=todayISO(); DATE_MAP={today:t,yesterday:addDays(t,-1),dayBefore:addDays(t,-2)}; }
+
+  // ── INIT ────────────────────────────────────────────────────────────────────
+  function initApp() {
+    refreshDateMap();
+    document.getElementById('dateLabel').textContent = formatDate(DATE_MAP.today);
+    document.getElementById('dayBeforeLabel').textContent = shortDate(DATE_MAP.dayBefore);
+    if (appUser && appUser.role === 'admin') document.getElementById('newBtn').style.display = '';
+    loadRequests();
+    setInterval(() => { if (currentMode==='daily' && currentDateFilter==='today') { refreshDateMap(); loadRequests(); } }, 90000);
+  }
+
+  // ── LOAD DATA ───────────────────────────────────────────────────────────────
+  async function loadRequests() {
+    document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="loading"><span class="spinner"></span>Loading…</div></td></tr>';
+    document.getElementById('tableFoot').style.display = 'none';
+    const dateToLoad = DATE_MAP[currentDateFilter] || DATE_MAP.today;
+    let url = '/pickup-requests?date=' + dateToLoad;
+    if (currentFilter === 'Pending') url += '&status=Pending';
+    try {
+      const res = await api('GET', url);
+      const data = await res.json();
+      requests = Array.isArray(data) ? data : [];
+    } catch(e) {
+      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">⚠️</span>' + esc(e.message) + '</div></td></tr>';
+      return;
+    }
+    updateCounts(); renderTable();
+  }
+
+  async function loadWeekRequests(startISO, endISO) {
+    document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="loading"><span class="spinner"></span>Loading…</div></td></tr>';
+    document.getElementById('tableFoot').style.display = 'none';
+    try {
+      const res = await api('GET', '/pickup-requests?status=Picked+Up');
+      const all = await res.json();
+      requests = (Array.isArray(all)?all:[]).filter(r=>r.request_date>=startISO&&r.request_date<=endISO);
+    } catch(e) {
+      document.getElementById('tableBody').innerHTML = '<tr><td colspan="7"><div class="empty"><span class="emoji">⚠️</span>' + esc(e.message) + '</div></td></tr>';
+      return;
+    }
+    updateCounts(); renderWeeklyTable();
+  }
+
+  function updateCounts() {
+    const pending=requests.filter(r=>r.status==='Pending').length, done=requests.filter(r=>r.status==='Picked Up').length;
+    document.getElementById('countToday').textContent = currentDateFilter==='today'?requests.length:'';
+    document.getElementById('countYesterday').textContent = currentDateFilter==='yesterday'?requests.length:'';
+    document.getElementById('countDayBefore').textContent = currentDateFilter==='dayBefore'?requests.length:'';
+    document.getElementById('countPending').textContent = pending;
+    document.getElementById('countDone').textContent = done;
+    document.getElementById('countAll').textContent = requests.length;
+    const lots=requests.reduce((s,r)=>s+(r.qty||0),0);
+    document.getElementById('summaryBar').innerHTML = `<span><strong>${requests.length}</strong> pickups</span><span><strong>${lots}</strong> total lots</span><span><strong>${pending}</strong> pending</span><span><strong>${done}</strong> picked up</span>`;
+  }
+
+  // ── RENDER TABLE ────────────────────────────────────────────────────────────
+  function renderTable() {
+    const tbody=document.getElementById('tableBody'), tfoot=document.getElementById('tableFoot');
+    if (!requests.length) { tbody.innerHTML='<tr><td colspan="7"><div class="empty"><span class="emoji">✅</span>No pickups to show</div></td></tr>'; tfoot.style.display='none'; return; }
+    const groups=new Map();
+    for (const r of requests) { const k=r.knitter||'—'; if(!groups.has(k))groups.set(k,[]); groups.get(k).push(r); }
+    let html='';
+    for (const [knitter,items] of groups) {
+      const qty=items.reduce((s,r)=>s+(r.qty||0),0), isMulti=items.length>1, isExp=expandedKnitters.has(knitter);
+      if (isMulti) {
+        const allP=items.every(r=>r.status==='Pending'), allD=items.every(r=>r.status==='Picked Up');
+        const st=allP?'<span class="status status-Pending">Pending</span>':allD?'<span class="status status-PickedUp">Picked Up</span>':'<span class="status" style="background:#e0e7ff;color:#3730a3;font-size:10px">Mixed</span>';
+        const lots=items.map(r=>r.lot_number).filter(Boolean).join(', ');
+        html+=`<tr class="parent-row ${isExp?'expanded':''}" data-knitter="${esc(knitter)}" style="cursor:pointer">
+          <td><button class="expand-toggle ${isExp?'open':''}" data-knitter="${esc(knitter)}">▶</button></td>
+          <td class="knitter-cell" colspan="2">${esc(knitter)} <span style="color:#999;font-weight:400;font-size:11px">(${items.length})</span></td>
+          <td class="qty-cell">${qty}</td><td class="lot-cell">${esc(lots)||'<span style="color:#bbb">—</span>'}</td><td>${st}</td><td></td></tr>`;
+        if (isExp) for (const r of items) {
+          const sc=r.status==='Picked Up'?'PickedUp':r.status;
+          html+=`<tr class="sub-row" data-id="${r.id}"><td></td><td class="customer-cell">${esc(r.customer||'—')}</td><td></td><td class="qty-cell">${r.qty||0}</td><td class="lot-cell">${esc(r.lot_number||'')}</td><td><span class="status status-${sc}">${esc(r.status)}</span></td><td class="row-action">${r.status==='Pending'?'<button class="pick-btn" data-id="'+r.id+'">✓ Pick</button>':''}</td></tr>`;
+        }
+      } else {
+        const r=items[0], sc=r.status==='Picked Up'?'PickedUp':r.status;
+        html+=`<tr data-id="${r.id}" style="cursor:pointer"><td></td><td class="knitter-cell">${esc(r.knitter)}</td><td class="customer-cell">${esc(r.customer||'—')}</td><td class="qty-cell">${r.qty||0}</td><td class="lot-cell">${esc(r.lot_number||'')}</td><td><span class="status status-${sc}">${esc(r.status)}</span></td><td class="row-action">${r.status==='Pending'?'<button class="pick-btn" data-id="'+r.id+'">✓ Pick</button>':''}</td></tr>`;
+      }
+    }
+    tbody.innerHTML=html;
+    document.getElementById('totalQty').textContent=requests.reduce((s,r)=>s+(r.qty||0),0);
+    tfoot.style.display='';
+    attachEvents();
+  }
+
+  function renderWeeklyTable() {
+    const tbody=document.getElementById('tableBody'), tfoot=document.getElementById('tableFoot');
+    if (!requests.length) { tbody.innerHTML='<tr><td colspan="7"><div class="empty"><span class="emoji">📋</span>No picked up items this week</div></td></tr>'; tfoot.style.display='none'; return; }
+    const byDate=new Map();
+    for (const r of requests) { if(!byDate.has(r.request_date))byDate.set(r.request_date,[]); byDate.get(r.request_date).push(r); }
+    let html='';
+    for (const [date,items] of byDate) {
+      html+=`<tr class="day-header"><td colspan="7">${shortDate(date)}<span class="day-count"> — ${items.length} pickups, ${items.reduce((s,r)=>s+(r.qty||0),0)} lots</span></td></tr>`;
+      for (const r of items) html+=`<tr data-id="${r.id}" style="cursor:pointer"><td></td><td class="knitter-cell">${esc(r.knitter)}</td><td class="customer-cell">${esc(r.customer||'—')}</td><td class="qty-cell">${r.qty||0}</td><td class="lot-cell">${esc(r.lot_number||'')}</td><td><span class="status status-PickedUp">Picked Up</span></td><td></td></tr>`;
+    }
+    tbody.innerHTML=html;
+    document.getElementById('totalQty').textContent=requests.reduce((s,r)=>s+(r.qty||0),0);
+    tfoot.style.display='';
+    attachEvents();
+  }
+
+  function attachEvents() {
+    const tbody=document.getElementById('tableBody');
+    tbody.querySelectorAll('.expand-toggle').forEach(btn=>btn.addEventListener('click',e=>{e.stopPropagation();const k=btn.dataset.knitter;if(expandedKnitters.has(k))expandedKnitters.delete(k);else expandedKnitters.add(k);renderTable();}));
+    tbody.querySelectorAll('.parent-row').forEach(row=>row.addEventListener('click',e=>{if(e.target.closest('.expand-toggle'))return;const k=row.dataset.knitter;if(expandedKnitters.has(k))expandedKnitters.delete(k);else expandedKnitters.add(k);renderTable();}));
+    tbody.querySelectorAll('tr[data-id]').forEach(row=>row.addEventListener('click',e=>{if(e.target.closest('.pick-btn'))return;openDetail(Number(row.dataset.id));}));
+    tbody.querySelectorAll('.pick-btn').forEach(btn=>btn.addEventListener('click',e=>{e.stopPropagation();markPickedUp(Number(btn.dataset.id));}));
+  }
+
+  // ── DETAIL MODAL ────────────────────────────────────────────────────────────
+  function openDetail(id) {
+    const r=requests.find(x=>x.id===id); if(!r)return;
+    const sc=r.status==='Picked Up'?'PickedUp':r.status;
+    document.getElementById('detailTitle').textContent=(r.knitter||'—')+' · Pickup Details';
+    document.getElementById('detailBody').innerHTML=`
+      <div class="detail-row"><span class="dl">Status</span><span class="dv"><span class="status status-${sc}">${esc(r.status)}</span></span></div>
+      <div class="detail-row"><span class="dl">Knitter</span><span class="dv">${esc(r.knitter)}</span></div>
+      <div class="detail-row"><span class="dl">Customer</span><span class="dv">${esc(r.customer||'—')}</span></div>
+      <div class="detail-row"><span class="dl">Qty</span><span class="dv">${r.qty||0} lots</span></div>
+      <div class="detail-row"><span class="dl">Lot #</span><span class="dv">${esc(r.lot_number||'—')}</span></div>
+      <div class="detail-row"><span class="dl">Date</span><span class="dv">${esc(r.request_date||'—')}</span></div>
+      ${r.notes?`<div class="detail-row"><span class="dl">Notes</span><span class="dv">${esc(r.notes)}</span></div>`:''}
+      ${r.picked_up_at?`<div class="detail-row"><span class="dl">Picked Up</span><span class="dv">${new Date(r.picked_up_at).toLocaleString()}</span></div>`:''}
+      <div class="detail-actions">
+        ${r.status==='Pending'?`<button class="btn btn-success" onclick="window._markPicked(${r.id})">✓ Mark as Picked Up</button>`:''}
+        ${r.status==='Pending'?`<button class="btn btn-danger" onclick="window._cancelPickup(${r.id})">Cancel Pickup</button>`:''}
+        ${r.status==='Picked Up'?`<button class="btn btn-outline-gray" onclick="window._undoPickup(${r.id})">↩ Undo (Back to Pending)</button>`:''}
+        <button class="btn btn-outline-gray" onclick="document.getElementById('detailOverlay').classList.remove('show')">Close</button>
+      </div>`;
+    document.getElementById('detailOverlay').classList.add('show');
+  }
+
+  // ── ACTIONS ─────────────────────────────────────────────────────────────────
+  async function getCoords() {
+    return new Promise(res=>{if(!navigator.geolocation)return res(null);navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude}),()=>res(null),{timeout:5000});});
+  }
+
+  async function markPickedUp(id) {
+    if (!confirm('Mark pickup #'+id+' as Picked Up?')) return;
+    const coords=await getCoords();
+    try {
+      const res=await api('PATCH','/pickup-requests/'+id+'/pickup',{lat:coords?.lat||null,lng:coords?.lng||null});
+      if(!res.ok){const d=await res.json();toast('Error: '+(d.detail||'Failed'),'error');return;}
+      toast('Marked as picked up ✓','success');
+      document.getElementById('detailOverlay').classList.remove('show');
+      await loadRequests();
+    } catch(e){toast('Error: '+e.message,'error');}
+  }
+
+  async function updateStatus(id,newStatus) {
+    const body={status:newStatus};
+    if(newStatus==='Pending'){body.picked_up_at=null;body.picked_up_by=null;body.lat=null;body.lng=null;}
+    try {
+      const res=await api('PATCH','/pickup-requests/'+id,body);
+      if(!res.ok){const d=await res.json();toast('Error: '+(d.detail||'Failed'),'error');return;}
+      toast('Status → '+newStatus,'success');
+      document.getElementById('detailOverlay').classList.remove('show');
+      await loadRequests();
+    } catch(e){toast('Error: '+e.message,'error');}
+  }
+
+  window._markPicked=markPickedUp;
+  window._cancelPickup=id=>{if(confirm('Cancel pickup #'+id+'?'))updateStatus(id,'Cancelled');};
+  window._undoPickup=id=>{if(confirm('Undo pickup #'+id+'?'))updateStatus(id,'Pending');};
+
+  // ── NEW PICKUP ───────────────────────────────────────────────────────────────
+  document.getElementById('newBtn').addEventListener('click',()=>{
+    ['f_knitter','f_customer','f_lot','f_notes'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('f_qty').value=1;
+    document.getElementById('newOverlay').classList.add('show');
+  });
+  document.getElementById('cancelNewBtn').addEventListener('click',()=>document.getElementById('newOverlay').classList.remove('show'));
+  document.getElementById('closeNew').addEventListener('click',()=>document.getElementById('newOverlay').classList.remove('show'));
+  document.getElementById('submitNewBtn').addEventListener('click',async()=>{
+    const knitter=document.getElementById('f_knitter').value.trim().toUpperCase();
+    if(!knitter){toast('Knitter is required','error');return;}
+    const btn=document.getElementById('submitNewBtn');
+    btn.disabled=true;btn.textContent='Creating…';
+    try {
+      const res=await api('POST','/pickup-requests',{request_date:DATE_MAP.today,knitter,customer:document.getElementById('f_customer').value.trim().toUpperCase(),lot_number:document.getElementById('f_lot').value.trim()||null,qty:Number(document.getElementById('f_qty').value)||0,notes:document.getElementById('f_notes').value.trim()||null});
+      const data=await res.json();
+      if(!res.ok){toast('Error: '+(data.detail||'Failed'),'error');return;}
+      toast('Pickup #'+data.id+' created','success');
+      document.getElementById('newOverlay').classList.remove('show');
+      await loadRequests();
+    } catch(e){toast('Error: '+e.message,'error');}
+    finally{btn.disabled=false;btn.textContent='Create Pickup';}
+  });
+
+  // ── FILTER TABS ──────────────────────────────────────────────────────────────
+  document.querySelectorAll('.filter-tab').forEach(t=>{
+    t.addEventListener('click',()=>{
+      document.querySelectorAll('.filter-tab').forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      const f=t.dataset.filter; currentFilter=f;
+      if(t.dataset.dateTab==='true'){
+        currentMode='daily';currentWeekStart=null;
+        document.getElementById('weekBar').style.display='none';
+        if(f!==currentDateFilter){currentDateFilter=f;expandedKnitters.clear();document.getElementById('dateLabel').textContent=formatDate(DATE_MAP[f]);loadRequests();}
+        else renderTable();
+        return;
+      }
+      if(f==='Picked Up'){
+        currentMode='weekly';document.getElementById('weekBar').style.display='flex';renderWeekBar();
+        const weeks=buildWeeks();
+        if(weeks.length){currentWeekStart=weeks[0].startISO;document.getElementById('weekBar').querySelector('.week-tab').classList.add('active');loadWeekRequests(weeks[0].startISO,weeks[0].endISO);}
+        return;
+      }
+      currentMode='daily';currentWeekStart=null;document.getElementById('weekBar').style.display='none';loadRequests();
+    });
+  });
+
+  // ── WEEK BAR ─────────────────────────────────────────────────────────────────
+  function getMonday(d){const dt=new Date(d),day=dt.getDay();dt.setDate(dt.getDate()-day+(day===0?-6:1));return dt;}
+  function buildWeeks(){
+    const weeks=[],today=new Date(),thisMonday=getMonday(today);
+    for(let i=0;i<4;i++){const mon=new Date(thisMonday);mon.setDate(mon.getDate()-(i*7));const sun=new Date(mon);sun.setDate(sun.getDate()+6);const end=sun>today?today:sun;const label=i===0?'This Week':i===1?'Last Week':shortDate(toISO(mon))+' – '+shortDate(toISO(end));weeks.push({label,startISO:toISO(mon),endISO:toISO(end)});}
+    return weeks;
+  }
+  function renderWeekBar(){
+    const bar=document.getElementById('weekBar'),weeks=buildWeeks();
+    bar.innerHTML=weeks.map(w=>`<div class="week-tab ${currentWeekStart===w.startISO?'active':''}" data-start="${w.startISO}" data-end="${w.endISO}">${w.label}</div>`).join('');
+    bar.querySelectorAll('.week-tab').forEach(tab=>tab.addEventListener('click',()=>{bar.querySelectorAll('.week-tab').forEach(x=>x.classList.remove('active'));tab.classList.add('active');currentWeekStart=tab.dataset.start;expandedKnitters.clear();loadWeekRequests(tab.dataset.start,tab.dataset.end);}));
+  }
+
+  // ── OTHER EVENTS ─────────────────────────────────────────────────────────────
+  document.getElementById('refreshBtn').addEventListener('click',loadRequests);
+  document.getElementById('logoutBtn').addEventListener('click',()=>{if(confirm('Sign out?'))doLogout();});
+  document.getElementById('closeDetail').addEventListener('click',()=>document.getElementById('detailOverlay').classList.remove('show'));
+  ['detailOverlay','newOverlay'].forEach(id=>document.getElementById(id).addEventListener('click',e=>{if(e.target.id===id)e.target.classList.remove('show');}));
+
+  // ── AUTO-LOGIN IF TOKEN EXISTS ────────────────────────────────────────────────
+  if (token && appUser) {
+    document.getElementById('loginScreen').classList.remove('show');
+    document.getElementById('appShell').style.display='';
+    initApp();
+  }
+</script>
+</body>
+</html>
